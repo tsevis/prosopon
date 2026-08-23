@@ -84,10 +84,32 @@ struct GeometryTests {
 
     @Test("the letterbox fits the whole photograph into the square")
     func letterboxFits() {
-        let (transform, scale) = ImageTensor.letterbox(imageWidth: 1280, imageHeight: 720, side: 640)
-        #expect(abs(scale - 0.5) < 1e-9, "the wider side governs")
+        let transform = ImageTensor.letterbox(imageWidth: 1280, imageHeight: 720, side: 640)
+        #expect(abs(transform.a - 0.5) < 1e-9, "the wider side governs")
+        #expect(transform.tx == 0 && transform.ty == 0, "unpadded, the image sits top-left")
         let corner = transform.apply(to: Point2D(1280, 720))
         #expect(abs(corner.x - 640) < 1e-9)
         #expect(corner.y <= 640, "the shorter side leaves the rest of the square empty")
+    }
+
+    @Test("a margin insets the photograph and still fits it")
+    func letterboxWithMargin() throws {
+        // SCRFD cannot see a face that fills its frame, so the retry puts space around it.
+        let transform = ImageTensor.letterbox(
+            imageWidth: 1000, imageHeight: 1000, side: 640, margin: 0.5
+        )
+        // 1000 px inset by 500 on each side is a 2000 px canvas mapped onto 640.
+        #expect(abs(transform.a - 0.32) < 1e-9)
+        #expect(abs(transform.tx - 160) < 1e-9, "the inset is carried in the translation")
+
+        for corner in [Point2D(0, 0), Point2D(1000, 1000)] {
+            let mapped = transform.apply(to: corner)
+            #expect(mapped.x >= 0 && mapped.x <= 640)
+            #expect(mapped.y >= 0 && mapped.y <= 640)
+        }
+        // Detections come back through the inverse, so it has to undo both parts.
+        let inverse = try #require(transform.inverted)
+        let round = inverse.apply(to: transform.apply(to: Point2D(321, 654)))
+        #expect(abs(round.x - 321) < 1e-9 && abs(round.y - 654) < 1e-9)
     }
 }

@@ -66,8 +66,20 @@ enum ImageTensor {
 
     /// The letterbox used by the detector: fit the whole photograph into the square,
     /// anchored top-left, and leave the rest black.
-    static func letterbox(imageWidth: Int, imageHeight: Int, side: Int) -> (transform: Affine2D, scale: Double) {
-        let scale = min(Double(side) / Double(imageWidth), Double(side) / Double(imageHeight))
-        return (Affine2D.scale(x: scale, y: scale), scale)
+    ///
+    /// `margin` insets the photograph by that fraction of its shorter side first. SCRFD's
+    /// anchors do not reach a face that fills its frame, so a tight crop is invisible to
+    /// it until some empty space is put around the head.
+    static func letterbox(
+        imageWidth: Int, imageHeight: Int, side: Int, margin: Double = 0
+    ) -> Affine2D {
+        let inset = margin * Double(min(imageWidth, imageHeight))
+        let paddedWidth = Double(imageWidth) + 2 * inset
+        let paddedHeight = Double(imageHeight) + 2 * inset
+        let scale = min(Double(side) / paddedWidth, Double(side) / paddedHeight)
+        return Affine2D(
+            a: scale, b: 0, c: 0, d: scale,
+            tx: scale * inset, ty: scale * inset
+        )
     }
 }
