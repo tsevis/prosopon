@@ -8,12 +8,12 @@ import Foundation
 /// darkening lands exactly on the lash lines and lip edges the alignment exists to
 /// preserve. Core Graphics does the decode on the way in, when the source is drawn
 /// into a linear context.
-struct LinearPixels {
-    let width: Int
-    let height: Int
-    var samples: [UInt16]
+public struct LinearPixels: Sendable {
+    public let width: Int
+    public let height: Int
+    public var samples: [UInt16]
 
-    static func empty(width: Int, height: Int) -> LinearPixels {
+    public static func empty(width: Int, height: Int) -> LinearPixels {
         LinearPixels(width: width, height: height, samples: [UInt16](repeating: 0, count: width * height * 4))
     }
 
@@ -28,7 +28,7 @@ struct LinearPixels {
     /// Only the region the canvas actually reaches is decoded. A 6000 px source would
     /// otherwise cost nearly 300 MB per image in this representation, times however
     /// many images are in flight.
-    static func decode(
+    public static func decode(
         _ image: CGImage,
         cropX: Int, cropY: Int, width: Int, height: Int
     ) -> LinearPixels? {
@@ -58,8 +58,16 @@ struct LinearPixels {
 
     /// Wraps the samples as a CGImage tagged linear, so a later conversion to sRGB
     /// applies the transfer function exactly once.
-    func makeCGImage() -> CGImage? {
-        guard let space = Self.linearSpace else { return nil }
+    public func makeCGImage() -> CGImage? {
+        makeCGImage(colorSpace: Self.linearSpace)
+    }
+
+    /// Wraps the samples in a chosen colour space without touching the values.
+    ///
+    /// Tagging sRGB is how a false-colour image -- a deviation map, say -- avoids being
+    /// brightened by a transfer function it was never meant to go through.
+    public func makeCGImage(colorSpace: CGColorSpace?) -> CGImage? {
+        guard let space = colorSpace else { return nil }
         let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
         guard let provider = CGDataProvider(data: data as CFData) else { return nil }
         return CGImage(

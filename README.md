@@ -30,6 +30,12 @@ Align and write tiles, with verification overlays:
 .build/release/prosopon align ~/Pictures/portraits -o ~/aligned --overlay
 ```
 
+Check that the batch registered, before committing to it:
+
+```bash
+.build/release/prosopon qa ~/aligned -o ~/qa
+```
+
 Collect the tiles into one layered Photoshop document, first file on top:
 
 ```bash
@@ -52,6 +58,14 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--max-magnification` | `2.0` | reject tiles enlarged beyond this |
 | `--dry-run` | off | analyse and report, write no images |
 | `--resampler` | `lanczos` | `lanczos` (GPU), `lanczos-cpu`, or `coregraphics` |
+
+### `qa` options
+
+| Flag | Default | |
+|---|---|---|
+| `--suspect-threshold` | `2` | call out tiles further than this many pixels from consensus |
+| `--contact-sheet-count` | `24` | how many tiles to put on the contact sheet |
+| `--deviation-gain` | `3` | brightness multiplier for the deviation image |
 
 ### `stack` options
 
@@ -85,6 +99,36 @@ Because the stretch is vertical-only, the aspect change *is* the stretch factor,
 5 % rule reads directly off the transform. Splitting the distortion across both axes
 would halve the per-axis error, but any horizontal scale about `x = 1024` moves the eyes
 off 512 and 1536.
+
+## Checking a batch
+
+Superimposing hundreds of aligned faces should leave the eyes and mouth crisp while
+everything that varies between people averages into a blur. One image says whether a
+whole batch is usable.
+
+Because the alignment is solved analytically and puts the eyes on target to within a
+billionth of a pixel, a soft average never means the arithmetic slipped — it means the
+landmark detector was wrong on some tiles. So `qa` also measures, per tile, how far each
+landmark sits from where the rest of the stack agrees it should be, by correlating a
+96 px window against the stack's own average. That turns "the average looks soft" into a
+ranked list of files to open.
+
+It writes `mean.png`, `mean-overlay.png`, `deviation.png`, a `contact-sheet.png` of the
+worst offenders with the targets drawn over each, and `qa.csv` / `qa.json`.
+
+Two figures matter in the summary:
+
+- **Sharpness retained** — how crisp the average is at each landmark against how crisp the
+  individual tiles are there. The *contrast* between the landmarks and the whole canvas is
+  the real signal: above 1 means the eyes and mouth survived averaging better than the
+  hair and jaw did, which is what registration looks like.
+- **Distance from consensus** — per tile, in pixels. Sub-pixel accurate via a parabolic fit
+  on the correlation peak, since rounding to whole pixels would put a half-pixel floor
+  under every measurement.
+
+Tiles that cannot be matched at all — a mirrored face, an unusual pose, a detection that
+landed on the wrong feature — are reported **separately** rather than as a large
+displacement, because the number would be meaningless and the fix is different.
 
 ## Resampling
 

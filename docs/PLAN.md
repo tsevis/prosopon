@@ -343,8 +343,10 @@ Built and tested (**39 tests green**, `swift test`):
   farthest-apart pair in each contour.
 - `ProsoponPSD` — a hand-written layered `.psd`/`.psb` encoder, streamed so a
   multi-gigabyte document never has to fit in memory.
-- `prosopon align`, `prosopon calibrate` and `prosopon stack`, with a JSON manifest and
-  a sortable CSV.
+- `ProsoponQA` — streaming mean and deviation over a stack, plus per-tile registration
+  against the stack's own consensus.
+- `prosopon align`, `prosopon calibrate`, `prosopon stack` and `prosopon qa`, with a JSON
+  manifest and sortable CSVs.
 
 Verified on a real portrait: coverage 100 %, mouth error **0.00 px**, stretch −3.39 %,
 and the overlay's discs sit on the eyes and mouth exactly as in the reference images.
@@ -360,12 +362,24 @@ and staying flat rather than growing with the layer count.
 
 ### Next, in order
 
-1. **Contact sheet and mean-face QA** — the mean of an aligned stack should be sharp at
-   the eyes and mouth and blurred everywhere else; that one image validates a whole batch.
-2. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
+1. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
    draggable landmarks and a live re-solve for the handful the detector gets wrong.
-3. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
+2. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
    provider, plus yaw gating.
+
+### A caveat on the "real portrait" check
+
+The only portrait available on this machine to smoke-test against turned out to be
+**reference image 2 itself** — 1024 x 1024, already aligned and already carrying the
+target discs and crosshairs. So the visual match against the reference is partly
+circular and is *not* evidence that Vision's landmarks land correctly on an unseen
+photograph. What it does still establish is unaffected: the solver's arithmetic, the
+coverage and magnification measurements, the resampler comparisons (which are about pixel
+fidelity, not landmarks), and the QA machinery, which is validated against synthetic
+stacks with known injected jitter and against known pixel shifts of real imagery.
+
+Detection accuracy remains unverified on real input. A folder of ordinary portraits
+would settle it.
 
 ### One empirical note
 
