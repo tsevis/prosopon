@@ -13,6 +13,13 @@ public struct ConsensusOffset: Hashable, Sendable, Codable {
     /// displacement is at least this large and possibly larger.
     public let clipped: Bool
 
+    public init(dx: Double, dy: Double, correlation: Double, clipped: Bool) {
+        self.dx = dx
+        self.dy = dy
+        self.correlation = correlation
+        self.clipped = clipped
+    }
+
     public var magnitude: Double { (dx * dx + dy * dy).squareRoot() }
 
     public static let none = ConsensusOffset(dx: 0, dy: 0, correlation: 0, clipped: false)

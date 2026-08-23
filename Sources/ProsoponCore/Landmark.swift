@@ -1,7 +1,14 @@
 import Foundation
 
 /// The three points every part of Prosopon is organised around.
-public enum Landmark: String, CaseIterable, Sendable, Hashable, Codable {
+///
+/// The `CodingKeyRepresentable` conformance is load-bearing rather than decorative.
+/// Swift encodes a `Dictionary` as a JSON object only when its key is a `String`, an
+/// `Int`, or `CodingKeyRepresentable`; for anything else it silently falls back to a
+/// flat array of alternating keys and values. Without this, `[Landmark: ConsensusOffset]`
+/// serialises as `["viewerLeftEye", {...}, "mouth", {...}]`, which reads back as
+/// nothing at all in any consumer expecting an object.
+public enum Landmark: String, CaseIterable, Sendable, Hashable, Codable, CodingKeyRepresentable {
     case viewerLeftEye
     case viewerRightEye
     case mouth

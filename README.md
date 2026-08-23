@@ -68,6 +68,7 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--max-yaw` | off | reject faces turned further than this, in degrees |
 | `--dry-run` | off | analyse and report, write no images |
 | `--resampler` | `lanczos` | `lanczos` (GPU), `lanczos-cpu`, or `coregraphics` |
+| `--bit-depth` | `16` | bits per channel written; 8 is right when the sources are 8-bit |
 
 ### `qa` options
 
@@ -170,6 +171,14 @@ There is one thing it is measurably better at: **pose**. Vision's 45 degree quan
 makes its yaw unusable for gating, while InsightFace's tracks the reference to half a
 degree. If yaw matters to you, that settles the choice on its own.
 
+### A note on output size
+
+A 2048² tile is about **22 MB** as a 16-bit PNG and **5.5 MB** as an 8-bit one — four
+times smaller, because PNG compresses 8-bit data far better. Rendered from 8-bit sources
+the two differ by at most 1/255, so the extra depth stores nothing. At a few thousand
+tiles that is the difference between 51 GB and 13 GB; set `--bit-depth 8` unless the
+sources genuinely carried more than 8 bits.
+
 ## Checking a batch
 
 Superimposing hundreds of aligned faces should leave the eyes and mouth crisp while
@@ -195,6 +204,13 @@ Two figures matter in the summary:
 - **Distance from consensus** — per tile, in pixels. Sub-pixel accurate via a parabolic fit
   on the correlation peak, since rounding to whole pixels would put a half-pixel floor
   under every measurement.
+
+The consensus measurement assumes the tiles resemble one another. Over a corpus of many
+*distinct* identities the average is a soft generic face that no individual correlates
+with, and almost everything reports as unmatched — on 2,288 assorted studio headshots,
+2,243 of them did. There the **sharpness contrast** figure is the one to read; the
+per-tile displacement needs a stack of one subject, or of faces alike enough to average
+into something recognisable.
 
 Tiles that cannot be matched at all — a mirrored face, an unusual pose, a detection that
 landed on the wrong feature — are reported **separately** rather than as a large

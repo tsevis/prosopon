@@ -9,6 +9,7 @@ struct OutputPlan: Sendable {
     var directory: URL
     var overlayDirectory: URL?
     var format: ImageFormat
+    var depth: OutputDepth
 }
 
 /// Load, detect, solve, gate, render — for one photograph.
@@ -115,12 +116,12 @@ struct Pipeline: Sendable {
         let tile = try renderer.render(image, using: alignment.transform)
 
         let destination = output.directory.appendingPathComponent("\(name).\(output.format.fileExtension)")
-        try ImageWriting.write(tile, to: destination, format: output.format)
+        try ImageWriting.write(tile, to: destination, format: output.format, depth: output.depth)
 
         if let overlayDirectory = output.overlayDirectory,
            let overlaid = OverlayRenderer(spec: spec).draw(over: tile) {
             let overlayURL = overlayDirectory.appendingPathComponent("\(name).png")
-            try ImageWriting.write(overlaid, to: overlayURL, format: .png)
+            try ImageWriting.write(overlaid, to: overlayURL, format: .png, depth: output.depth)
         }
 
         return destination.path

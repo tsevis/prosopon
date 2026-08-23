@@ -29,11 +29,23 @@ public enum ImageWriteError: Error, CustomStringConvertible {
     }
 }
 
+/// Bits per channel in a written file.
+///
+/// 16 is the safe default, but it only pays when the source carried more than 8 bits.
+/// A tile rendered from an 8-bit JPEG or PNG stores nothing extra at 16 and costs twice
+/// the disk, which matters at a few thousand tiles.
+public enum OutputDepth: Int, Sendable, CaseIterable {
+    case eight = 8
+    case sixteen = 16
+}
+
 public enum ImageWriting {
 
     /// Writes `image`, converting the linear working space back to sRGB on the way out.
-    public static func write(_ image: CGImage, to url: URL, format: ImageFormat) throws {
-        let output = convertToOutputSpace(image) ?? image
+    public static func write(
+        _ image: CGImage, to url: URL, format: ImageFormat, depth: OutputDepth = .sixteen
+    ) throws {
+        let output = convertToOutputSpace(image, depth: depth) ?? image
 
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL, format.contentType.identifier as CFString, 1, nil
@@ -54,16 +66,19 @@ public enum ImageWriting {
 
     /// Re-encodes linear values as sRGB. Without this the file looks washed out
     /// everywhere except in software that honours the linear profile.
-    private static func convertToOutputSpace(_ image: CGImage) -> CGImage? {
+    private static func convertToOutputSpace(_ image: CGImage, depth: OutputDepth) -> CGImage? {
+        let bitmapInfo = depth == .sixteen
+            ? CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder16Little.rawValue
+            : CGImageAlphaInfo.premultipliedLast.rawValue
         guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
                 data: nil,
                 width: image.width,
                 height: image.height,
-                bitsPerComponent: 16,
+                bitsPerComponent: depth.rawValue,
                 bytesPerRow: 0,
                 space: srgb,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder16Little.rawValue
+                bitmapInfo: bitmapInfo
               )
         else { return nil }
 

@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ProsoponCore
 import ProsoponIO
+import ProsoponQA
 import Testing
 @testable import ProsoponReview
 
@@ -66,14 +67,29 @@ enum Fixture {
         return directory
     }
 
+    /// Written with the very encoder the QA pass uses.
+    ///
+    /// Hand-rolling this JSON is what hid the encoding bug: the fixture was written in
+    /// the shape the reader wanted rather than the shape the writer produced, so the
+    /// test passed while the real file was unreadable.
     private static func writeQAReport(_ values: [String: (Double, Double)], to directory: URL) throws {
-        let tiles = values.map { name, value in
-            """
-            {"name":"\(name)","offsets":{"viewerLeftEye":{"dx":\(value.0),"dy":0,"correlation":\(value.1),"clipped":false}}}
-            """
-        }
-        let json = "{\"tileCount\":\(tiles.count),\"tiles\":[\(tiles.joined(separator: ","))]}"
-        try Data(json.utf8).write(to: directory.appendingPathComponent("qa.json"))
+        let report = StackQA(
+            tileCount: values.count,
+            canvasSize: canvas,
+            landmarkSharpness: [:],
+            globalSharpness: SharpnessRetention(
+                meanImageAcutance: 1, averageTileAcutance: 1, retention: 1
+            ),
+            tiles: values.map { name, value in
+                TileQA(name: name, path: "/tmp/\(name).png", offsets: [
+                    .viewerLeftEye: ConsensusOffset(
+                        dx: value.0, dy: 0, correlation: value.1, clipped: false
+                    ),
+                ])
+            }
+        )
+        try JSONEncoder().encode(report)
+            .write(to: directory.appendingPathComponent("qa.json"))
     }
 
     static func sourceImage(side: Int = 900) throws -> CGImage {
@@ -165,6 +181,20 @@ struct ReviewSessionTests {
         #expect(session.entries[1].name == "adrift-source")
         #expect(session.entries[2].name == "quiet-source")
         #expect(session.entries[1].consensusDisplacement.map { abs($0 - 6) < 1e-9 } == true)
+        #expect(session.loadedQAReport, "the report the QA pass writes must actually decode")
+    }
+
+    @Test("a malformed QA report is reported rather than passed over in silence")
+    func malformedQAReportIsSurfaced() throws {
+        let directory = try Fixture.makeRun(names: ["a"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data("{ not json at all".utf8)
+            .write(to: directory.appendingPathComponent("qa.json"))
+
+        let session = try ReviewSession(directory: directory)
+        #expect(session.entries.count == 1, "the run still opens")
+        #expect(session.loadedQAReport == false)
+        #expect(session.qaReportProblem != nil, "a broken report must not fail quietly")
     }
 
     @Test("a missing QA report is simply not used")
@@ -174,6 +204,8 @@ struct ReviewSessionTests {
 
         let session = try ReviewSession(directory: directory)
         #expect(session.entries.allSatisfy { $0.consensusDisplacement == nil })
+        #expect(session.loadedQAReport == false)
+        #expect(session.qaReportProblem == nil, "absence is not a problem worth reporting")
     }
 
     @Test("a manifest from an older build still opens")

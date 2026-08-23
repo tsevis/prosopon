@@ -19,6 +19,9 @@ struct Align: AsyncParsableCommand {
     @Option(name: .long, help: "Output format: png or tiff.")
     var format: String = "png"
 
+    @Option(name: .long, help: "Bits per channel written: 8 or 16. 16 only pays when the source had more than 8.")
+    var bitDepth: Int = 16
+
     @Flag(name: .long, help: "Also write verification overlays with the grid and target discs.")
     var overlay: Bool = false
 
@@ -41,6 +44,9 @@ struct Align: AsyncParsableCommand {
         let urls = try shared.resolvedInputs()
         guard let imageFormat = ImageFormat(rawValue: format.lowercased()) else {
             throw ValidationError("unknown format '\(format)'; expected png or tiff")
+        }
+        guard let depth = OutputDepth(rawValue: bitDepth) else {
+            throw ValidationError("bit depth must be 8 or 16")
         }
 
         let outputDirectory = URL(fileURLWithPath: (output as NSString).expandingTildeInPath)
@@ -70,7 +76,8 @@ struct Align: AsyncParsableCommand {
             output: dryRun ? nil : OutputPlan(
                 directory: outputDirectory,
                 overlayDirectory: overlayDirectory,
-                format: imageFormat
+                format: imageFormat,
+                depth: depth
             )
         )
 

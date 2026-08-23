@@ -7,6 +7,12 @@ public struct TileQA: Sendable, Codable {
     public var path: String
     public var offsets: [Landmark: ConsensusOffset]
 
+    public init(name: String, path: String, offsets: [Landmark: ConsensusOffset]) {
+        self.name = name
+        self.path = path
+        self.offsets = offsets
+    }
+
     /// The largest landmark displacement, which is what decides whether a tile is worth
     /// a second look.
     public var worstDisplacement: Double {
@@ -35,6 +41,12 @@ public struct SharpnessRetention: Sendable, Codable {
     public var meanImageAcutance: Double
     public var averageTileAcutance: Double
     public var retention: Double
+
+    public init(meanImageAcutance: Double, averageTileAcutance: Double, retention: Double) {
+        self.meanImageAcutance = meanImageAcutance
+        self.averageTileAcutance = averageTileAcutance
+        self.retention = retention
+    }
 }
 
 public struct StackQA: Sendable, Codable {
@@ -43,6 +55,18 @@ public struct StackQA: Sendable, Codable {
     public var landmarkSharpness: [Landmark: SharpnessRetention]
     public var globalSharpness: SharpnessRetention
     public var tiles: [TileQA]
+
+    public init(
+        tileCount: Int, canvasSize: Double,
+        landmarkSharpness: [Landmark: SharpnessRetention],
+        globalSharpness: SharpnessRetention, tiles: [TileQA]
+    ) {
+        self.tileCount = tileCount
+        self.canvasSize = canvasSize
+        self.landmarkSharpness = landmarkSharpness
+        self.globalSharpness = globalSharpness
+        self.tiles = tiles
+    }
 
     /// Landmark retention divided by whole-canvas retention.
     ///

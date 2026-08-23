@@ -39,7 +39,7 @@ let package = Package(
         .testTarget(name: "ProsoponCoreTests", dependencies: ["ProsoponCore"]),
         .testTarget(name: "ProsoponRenderTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponQATests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponQA"]),
-        .testTarget(name: "ProsoponReviewTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponReview"]),
+        .testTarget(name: "ProsoponReviewTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponReview", "ProsoponQA"]),
         .testTarget(name: "ProsoponInsightTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponInsight"]),
         .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]

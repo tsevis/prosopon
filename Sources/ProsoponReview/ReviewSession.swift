@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import ProsoponCore
 import ProsoponIO
+import ProsoponQA
 
 public enum ReviewSortOrder: String, CaseIterable, Sendable {
     /// Worst first. The point of the app is the handful the detector got wrong.
@@ -51,6 +52,10 @@ public final class ReviewSession {
     }
     public var selection: ReviewEntry.ID?
     public private(set) var lastSaveSummary: String?
+    /// True when a QA report was found and read, so the consensus ordering means something.
+    public private(set) var loadedQAReport = false
+    /// Set when a report was present but unreadable, rather than letting it pass unnoticed.
+    public private(set) var qaReportProblem: String?
 
     public init(directory: URL) throws {
         self.directory = directory
@@ -102,23 +107,35 @@ public final class ReviewSession {
 
     /// Folds in `qa.json` when it is there, so the ordering can follow the consensus
     /// measurement rather than the per-tile score alone.
+    ///
+    /// Decoded as the very type the QA pass writes. An earlier version declared its own
+    /// private copy of the schema, on the theory that a partial report should not fail
+    /// the load; what it actually bought was a silent, permanent one — the two drifted,
+    /// every decode failed, and the ordering this feeds simply never worked. A missing
+    /// file is still fine; a malformed one is now worth saying out loud.
     private func mergeQAReport() {
         let url = directory.appendingPathComponent("qa.json")
-        guard let data = try? Data(contentsOf: url),
-              let report = try? JSONDecoder().decode(QASummary.self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: url) else { return }
 
-        var byName: [String: QASummary.Tile] = [:]
+        let report: StackQA
+        do {
+            report = try JSONDecoder().decode(StackQA.self, from: data)
+        } catch {
+            qaReportProblem = "\(url.lastPathComponent) could not be read: \(error)"
+            return
+        }
+
+        var byName: [String: TileQA] = [:]
         for tile in report.tiles { byName[tile.name] = tile }
 
         for index in entries.indices {
             let key = entries[index].outputURL?.deletingPathExtension().lastPathComponent
                 ?? entries[index].name
             guard let tile = byName[key] else { continue }
-            let displacements = tile.offsets.values.map { ($0.dx * $0.dx + $0.dy * $0.dy).squareRoot() }
-            entries[index].consensusDisplacement = displacements.max()
-            entries[index].consensusMatched = (tile.offsets.values.map(\.correlation).min() ?? 0) >= 0.7
+            entries[index].consensusDisplacement = tile.worstDisplacement
+            entries[index].consensusMatched = tile.lowestCorrelation >= StackQA.matchFloor
         }
+        loadedQAReport = true
     }
 
     // MARK: Ordering and selection
@@ -188,19 +205,4 @@ public final class ReviewSession {
     public var editCount: Int { editedEntries.count }
 
     public func recordSave(_ summary: String) { lastSaveSummary = summary }
-}
-
-/// Just enough of `qa.json` to sort by. Declared here rather than shared with the QA
-/// module so that reading an older or partial report cannot fail the whole load.
-struct QASummary: Decodable {
-    struct Offset: Decodable {
-        var dx: Double
-        var dy: Double
-        var correlation: Double
-    }
-    struct Tile: Decodable {
-        var name: String
-        var offsets: [String: Offset]
-    }
-    var tiles: [Tile]
 }
