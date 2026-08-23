@@ -22,7 +22,27 @@ struct ProsoponReviewApp: App {
     var body: some Scene {
         WindowGroup {
             ReviewWindow(directory: Self.directoryArgument)
+                // Applied once at the root, so every system control the app has not
+                // restyled by hand still lands in the palette rather than defaulting to
+                // whichever accent the user has set in System Settings.
+                .tint(Theme.tint)
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About \(Brand.name)") {
+                    NotificationCenter.default.post(name: .prosoponShowAbout, object: nil)
+                }
+            }
+            CommandGroup(after: .newItem) {
+                Button("Add Portraits\u{2026}") {
+                    NotificationCenter.default.post(name: .prosoponAddSources, object: nil)
+                }
+                .keyboardShortcut("i")
+            }
+            CommandGroup(replacing: .help) {
+                Link("Prosopon on GitHub", destination: Brand.repository)
+            }
+        }
     }
 }

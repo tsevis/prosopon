@@ -3,15 +3,15 @@ import ProsoponCore
 
 /// The manifest, flattened for sorting in a spreadsheet. Reviewing hundreds of tiles
 /// means sorting by score and looking at the worst twenty; CSV is the shortest path there.
-enum CSVReport {
-    static let header = [
+public enum CSVReport {
+    public static let header = [
         "source", "face", "accepted", "rejections", "score",
         "coverage_pct", "magnification", "mouth_error_px",
         "stretch_applied_pct", "stretch_wanted_pct", "stretch_clamped",
         "shear_clamped", "roll_deg", "yaw_deg", "pose_yaw_deg", "native_ratio", "output", "failure",
     ]
 
-    static func render(_ tiles: [TileRecord]) -> String {
+    public static func render(_ tiles: [TileRecord]) -> String {
         var lines = [header.joined(separator: ",")]
         for tile in tiles {
             let quality = tile.quality

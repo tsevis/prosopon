@@ -101,30 +101,14 @@ struct Align: AsyncParsableCommand {
         ProgressBar.finish()
 
         if !dryRun {
-            try writeManifest(tiles, spec: spec, to: outputDirectory)
+            try RunWriter.write(
+                tiles, to: outputDirectory, spec: spec,
+                solveOptions: shared.solveOptions,
+                detector: shared.detector.rawValue,
+                resampler: resampler.rawValue
+            )
         }
         Summary.print(tiles, options: shared.solveOptions)
     }
 
-    private func writeManifest(_ tiles: [TileRecord], spec: CanvasSpec, to directory: URL) throws {
-        let manifest = RunManifest(
-            canvasSize: spec.size,
-            gridStep: spec.gridStep,
-            targets: [
-                "viewerLeftEye": spec.viewerLeftEye,
-                "viewerRightEye": spec.viewerRightEye,
-                "mouth": spec.mouth,
-            ],
-            maxStretch: shared.maxStretch,
-            maxShear: shared.noShear ? 0 : shared.maxShear,
-            detector: shared.detector.rawValue,
-            resampler: resampler.rawValue,
-            tiles: tiles
-        )
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(manifest).write(to: directory.appendingPathComponent("manifest.json"))
-        try Data(CSVReport.render(tiles).utf8).write(to: directory.appendingPathComponent("report.csv"))
-    }
 }

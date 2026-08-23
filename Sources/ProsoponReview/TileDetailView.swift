@@ -50,7 +50,7 @@ public struct TileDetailView: View {
         GeometryReader { proxy in
             let geometry = CanvasGeometry(canvasSize: session.spec.size, availableSize: proxy.size)
             ZStack(alignment: .topLeading) {
-                Color(white: 0.11)
+                Theme.canvas
                 if let preview {
                     Image(decorative: preview, scale: 1)
                         .resizable()

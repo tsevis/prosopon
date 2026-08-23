@@ -58,7 +58,7 @@ struct MetricsPanel: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(white: 0.15))
+        .background(Theme.canvasPanel)
     }
 
     /// A turned head is worth flagging; a figure from a detector that rounds to 45

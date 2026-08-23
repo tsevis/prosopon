@@ -14,6 +14,11 @@ public enum BatchRunner {
         public let completed: Int
         public let total: Int
 
+        public init(completed: Int, total: Int) {
+            self.completed = completed
+            self.total = total
+        }
+
         public var fraction: Double { total == 0 ? 1 : Double(completed) / Double(total) }
         public var isFinished: Bool { completed >= total }
     }

@@ -1,112 +1,201 @@
+import AppKit
 import ProsoponCore
 import ProsoponIO
+import ProsoponPipeline
 import ProsoponRender
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// The whole app: a queue on the left, the tile being worked on to the right.
+/// The window: the stages, one line of commands, one line of plain language, and the work.
+///
+/// The three strips are the same shape in every stage; only the panel below them changes.
+/// Every action available anywhere lives in the command bar, which is what keeps a window
+/// with three stages and a dozen actions still reading as one simple thing.
 public struct ReviewWindow: View {
-    @State private var session: ReviewSession?
-    @State private var loadError: String?
-    @State private var saveMessage: String?
-    @State private var isSaving = false
+    @State private var state: AppState
+    @State private var renderer: PreviewRenderer?
+    @State private var showingAbout = false
+    @State private var isDropTarget = false
 
     private let thumbnails = ThumbnailCache()
-    @State private var renderer: PreviewRenderer?
 
     public init(directory: URL? = nil) {
-        if let directory { _session = State(initialValue: try? ReviewSession(directory: directory)) }
+        _state = State(initialValue: AppState(directory: directory))
     }
 
     public var body: some View {
-        Group {
-            if let session, let renderer {
-                NavigationSplitView {
-                    TileListView(session: session, thumbnails: thumbnails)
-                        .navigationSplitViewColumnWidth(min: 240, ideal: 290)
-                } detail: {
-                    TileDetailView(session: session, renderer: renderer)
-                }
-                .toolbar { toolbar(session) }
-                .navigationTitle(session.directory.lastPathComponent)
-                .navigationSubtitle(subtitle(session))
-            } else {
-                welcome
+        @Bindable var state = state
+
+        VStack(spacing: 0) {
+            StageStrip(selection: $state.stage, state: state.chrome)
+            CommandBar(commands: commands, perform: perform) {
+                SubjectChipView(
+                    state: state.chrome,
+                    onOpenRun: openRun,
+                    onRevealRun: revealRun
+                )
             }
+            AnalysisProgressStrip(state: state.chrome)
+            BannerView(banner: StatusBanner.message(for: state.stage, state: state.chrome))
+            content
         }
-        .frame(minWidth: 980, minHeight: 680)
+        .background(Theme.ground)
+        .frame(minWidth: 1000, minHeight: 700)
         .onAppear { if renderer == nil { renderer = try? PreviewRenderer() } }
-        .alert("Could not open", isPresented: .constant(loadError != nil)) {
-            Button("OK") { loadError = nil }
-        } message: {
-            Text(loadError ?? "")
-        }
-    }
-
-    private var welcome: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "person.crop.square").font(.system(size: 52)).foregroundStyle(.secondary)
-            Text("Prosopon Review").font(.title2)
-            Text("Open a folder written by `prosopon align`.\nIt needs the manifest.json from that run.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Button("Open Folder\u{2026}") { openFolder() }
-                .keyboardShortcut("o")
-        }
-        .padding(48)
-    }
-
-    @ToolbarContentBuilder
-    private func toolbar(_ session: ReviewSession) -> some ToolbarContent {
-        ToolbarItemGroup {
-            Button { session.selectPrevious() } label: { Image(systemName: "chevron.up") }
-                .keyboardShortcut(.upArrow, modifiers: [])
-                .help("Previous tile")
-            Button { session.selectNext() } label: { Image(systemName: "chevron.down") }
-                .keyboardShortcut(.downArrow, modifiers: [])
-                .help("Next tile")
-
-            Button("Revert") { session.revertSelected() }
-                .disabled(session.selected?.isEdited != true)
-                .keyboardShortcut("z")
-
-            Button(isSaving ? "Saving\u{2026}" : "Save \(session.editCount) correction\(session.editCount == 1 ? "" : "s")") {
-                save(session)
+        // Folders and photographs together, which is what a Finder drag hands over.
+        .dropDestination(for: URL.self) { urls, _ in
+            state.sources.add(urls)
+            if state.stage == .fineTune, state.session == nil { state.stage = .importPortraits }
+            return true
+        } isTargeted: { isDropTarget = $0 }
+        .overlay {
+            if isDropTarget {
+                RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                    .strokeBorder(Theme.accent, lineWidth: 3)
+                    .padding(4)
+                    .allowsHitTesting(false)
             }
-            .disabled(session.editCount == 0 || isSaving)
-            .keyboardShortcut("s")
-
-            Button("Open\u{2026}") { openFolder() }
+        }
+        .sheet(isPresented: $showingAbout) {
+            AboutView { showingAbout = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prosoponShowAbout)) { _ in
+            showingAbout = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prosoponAddSources)) { _ in
+            addSources()
+        }
+        .task { if AboutPresentation.wanted() { showingAbout = true } }
+        .onChange(of: showingAbout) { _, showing in
+            if !showing { AboutPresentation.remember() }
+        }
+        .alert(Brand.name, isPresented: Binding(
+            get: { state.problem != nil },
+            set: { if !$0 { state.problem = nil } }
+        )) {
+            Button("OK", role: .cancel) { state.problem = nil }
+        } message: {
+            Text(state.problem ?? "")
         }
     }
 
-    private func subtitle(_ session: ReviewSession) -> String {
-        var parts = ["\(session.entries.count) tiles"]
-        if session.editCount > 0 { parts.append("\(session.editCount) edited") }
-        if let message = saveMessage { parts.append(message) }
-        return parts.joined(separator: "  \u{00B7}  ")
+    // MARK: The work itself
+
+    @ViewBuilder
+    private var content: some View {
+        switch state.stage {
+        case .importPortraits:
+            ImportView(
+                state: state,
+                alignedPaths: state.alignedSourcePaths,
+                thumbnails: thumbnails,
+                onAdd: addSources
+            )
+        case .analyze:
+            AnalyzeView(state: state, onChooseOutput: chooseOutput)
+        case .fineTune:
+            fineTune
+        }
     }
 
-    private func openFolder() {
+    @ViewBuilder
+    private var fineTune: some View {
+        if let session = state.session, let renderer {
+            // The queue and the tile, unchanged: worst first on the left, the draggable
+            // landmarks on the right.
+            NavigationSplitView {
+                TileListView(session: session, thumbnails: thumbnails)
+                    .navigationSplitViewColumnWidth(min: 240, ideal: 290)
+            } detail: {
+                TileDetailView(session: session, renderer: renderer)
+            }
+        } else {
+            EmptyStateView(
+                symbol: "slider.horizontal.below.rectangle",
+                title: "No run open",
+                message: "Analyze some portraits, or open a folder an earlier run wrote. "
+                    + "It needs the manifest.json from that run."
+            ) {
+                Button("Open Run\u{2026}", action: openRun).buttonStyle(.prosoponSecondary)
+            }
+        }
+    }
+
+    // MARK: Commands
+
+    private var commands: [Command] {
+        CommandSet.commands(for: state.stage, state: state.chrome)
+    }
+
+    private func perform(_ action: ChromeAction) {
+        switch action {
+        case .addSources: addSources()
+        case .removeAllSources: state.sources.removeAll()
+        case .chooseOutputFolder: chooseOutput()
+        case .analyse: state.analyse()
+        case .cancelAnalysis: state.cancelAnalysis()
+        case .openRun: openRun()
+        case .revertTile: state.session?.revertSelected()
+        case .saveCorrections: save()
+        case .goToAnalyze: state.stage = .analyze
+        case .goToFineTune: state.stage = .fineTune
+        }
+    }
+
+    // MARK: Panels
+
+    /// One panel taking folders and files at once, which is what Apple's own applications
+    /// do and what saves a second trip when a corpus is a folder plus a few strays.
+    private func addSources() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.message = "Choose folders of portraits, individual photographs, or both."
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK else { return }
+        state.sources.add(panel.urls)
+        state.stage = .importPortraits
+    }
+
+    private func chooseOutput() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Where should the aligned tiles and the manifest be written?"
+        panel.prompt = "Choose"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        state.outputDirectory = url
+    }
+
+    private func openRun() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.message = "Choose a folder written by an earlier run \u{2014} the one holding "
+            + "manifest.json."
         panel.prompt = "Open"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            session = try ReviewSession(directory: url)
-            saveMessage = nil
-            Task { await thumbnails.invalidateAll() }
-        } catch {
-            loadError = "\(error)"
-        }
+        state.open(url)
+        Task { await thumbnails.invalidateAll() }
     }
+
+    private func revealRun() {
+        guard let directory = state.session?.directory else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([directory])
+    }
+
+    // MARK: Saving
 
     /// Corrections are written over the run they came from, so a later `stack` or `qa`
     /// picks them up without any further step.
-    private func save(_ session: ReviewSession) {
-        isSaving = true
+    private func save() {
+        guard let session = state.session else { return }
+        state.setSaving(true)
+
         let entries = session.entries
         let directory = session.directory
         let spec = session.spec
@@ -128,13 +217,30 @@ public struct ReviewWindow: View {
 
             switch result {
             case .success(let message):
-                saveMessage = message
-                session.recordSave(message)
+                state.recordSave(message)
                 await thumbnails.invalidateAll()
             case .failure(let error):
-                loadError = "\(error)"
+                state.problem = "\(error)"
             }
-            isSaving = false
+            state.setSaving(false)
         }
+    }
+}
+
+public extension Notification.Name {
+    static let prosoponShowAbout = Notification.Name("ProsoponShowAbout")
+    static let prosoponAddSources = Notification.Name("ProsoponAddSources")
+}
+
+/// Shows the info panel once, the first time this version is run.
+enum AboutPresentation {
+    private static let key = "prosopon.about.seen"
+
+    static func wanted() -> Bool {
+        UserDefaults.standard.string(forKey: key) != Brand.version
+    }
+
+    static func remember() {
+        UserDefaults.standard.set(Brand.version, forKey: key)
     }
 }

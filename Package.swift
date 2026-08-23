@@ -29,7 +29,9 @@ let package = Package(
         .target(name: "ProsoponQA", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .target(
             name: "ProsoponPipeline",
-            dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponVision"]
+            dependencies: [
+                "ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponVision", "ProsoponInsight",
+            ]
         ),
         .target(
             name: "ProsoponReview",

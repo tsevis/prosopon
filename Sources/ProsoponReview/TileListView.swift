@@ -74,17 +74,17 @@ private struct TileRow: View {
     @ViewBuilder
     private var thumbnailWell: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.2))
+            RoundedRectangle(cornerRadius: Theme.Radius.thumbnail).fill(Theme.canvasWell)
             if let thumbnail {
                 Image(decorative: thumbnail, scale: 1)
                     .resizable().aspectRatio(contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.thumbnail))
             } else {
                 let state = state
                 Image(systemName: state.symbolName)
                     .font(.system(size: 15))
                     .foregroundStyle(state.isTrouble ? .orange : .secondary)
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: Theme.Radius.thumbnail)
                     .strokeBorder(
                         style: StrokeStyle(lineWidth: 1, dash: [3, 2])
                     )

@@ -19,7 +19,7 @@ import SwiftUI
 /// Appearance can change under a view already on screen — the system switching at sunset,
 /// a window dragged to a display with a different profile — and a value resolved once
 /// does not follow.
-enum Theme {
+public enum Theme {
 
     // MARK: - Accent
 
@@ -49,6 +49,10 @@ enum Theme {
     /// the eye makes of the shadows in it. Every other image application on this machine
     /// keeps its canvas dark for the same reason.
     static let canvas = Color(white: 0.11)
+    /// The metrics under the canvas, which belong to it rather than to the chrome.
+    static let canvasPanel = Color(white: 0.15)
+    /// An empty thumbnail well on that ground.
+    static let canvasWell = Color(white: 0.2)
 
     // MARK: - Hairlines
 
@@ -107,6 +111,10 @@ enum Theme {
         /// Measurements read as a column, so they are monospaced and lined.
         static let metric = SwiftUI.Font.system(size: 13, design: .monospaced).monospacedDigit()
     }
+
+    /// The one value outside this module: the app applies it at the root so every system
+    /// control lands in the palette rather than on the user's system accent.
+    public static var tint: Color { accentText }
 
     // MARK: - Building dynamic colours
 

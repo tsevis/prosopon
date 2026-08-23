@@ -39,17 +39,10 @@ struct SharedOptions: ParsableArguments {
     @Option(name: .long, help: "Directory holding det_10g.onnx and 2d106det.onnx.")
     var modelPath: String?
 
-    /// Built once and shared: loading two ONNX models is a per-process cost.
     func makeDetector() throws -> any LandmarkDetector {
-        switch detector {
-        case .vision:
-            VisionLandmarkDetector(usesPupils: usePupils, minimumConfidence: minConfidence)
-        case .insightface:
-            try InsightFaceLandmarkDetector(
-                bundle: modelPath.map { try ModelBundle.locate(explicit: $0) },
-                minimumConfidence: minConfidence
-            )
-        }
+        try detector.make(
+            modelPath: modelPath, minimumConfidence: minConfidence, usesPupils: usePupils
+        )
     }
 
     var solveOptions: SolveOptions {
@@ -92,8 +85,4 @@ extension Resampler: ExpressibleByArgument {}
 /// conformance is ArgumentParser's and stays on the command line's side of that line.
 extension FaceSelection: ExpressibleByArgument {}
 
-
-enum DetectorChoice: String, CaseIterable, ExpressibleByArgument {
-    case vision
-    case insightface
-}
+extension DetectorChoice: ExpressibleByArgument {}
