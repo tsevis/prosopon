@@ -85,7 +85,10 @@ struct Pipeline: Sendable {
             sourceHeight: Double(image.height),
             spec: spec
         )
-        let quality = QualityReport.evaluate(alignment: alignment, fit: fit, thresholds: thresholds)
+        let quality = QualityReport.evaluate(
+            alignment: alignment, fit: fit,
+            yawDegrees: face.yawDegrees, thresholds: thresholds
+        )
 
         record.transform = alignment.transform
         record.quality = quality

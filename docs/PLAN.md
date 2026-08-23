@@ -364,13 +364,27 @@ decode pixel-identical to their source tiles, in both bit depths and both contai
 Measured at 120 layers in 18 s producing 1.3 GB, with resident memory settling near 1 GB
 and staying flat rather than growing with the layer count.
 
-### Next, in order
+### Next
 
-1. **Yaw gating.** A turned head foreshortens the interocular distance, so the similarity
-   step over-scales the whole face and no 2D affine can undo it. Both detectors produced
-   wild mouth-drop ratios (1.7 and 1.9) on the one strongly non-frontal face available.
-   `1k3d68` is on disk and reports pose; the gate is a small piece of work on top.
-2. **Deciding which detector is actually better**, which needs real portraits.
+**Deciding which detector to trust, and how much of a corpus survives the gates.** Both
+need real portraits, and one run answers them:
+
+```bash
+prosopon calibrate ~/portraits --detector insightface
+```
+
+Everything else that remains is speculative until that number exists.
+
+### Yaw
+
+Gated, not corrected - the fixed eye coordinates determine the scale outright, so there
+is no freedom left to compensate for foreshortening. Pose comes from `1k3d68` and agrees
+with the reference to 0.47 degrees over a range of -55 to +7.
+
+Only the InsightFace detector can drive it. Vision quantises yaw to 45 degree steps and
+reported 0 for faces turned 13, 20 and 37, so `--max-yaw` warns when paired with it. This
+is the one respect in which the InsightFace tier is *demonstrably* better rather than
+merely faithful to its reference.
 
 ### A caveat on the "real portrait" check
 

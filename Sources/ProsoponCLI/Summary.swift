@@ -38,6 +38,14 @@ enum Summary {
             out += "  mouth error     median \(String(format: "%.1f", median(mouthErrors))) px"
             out += ", worst \(String(format: "%.1f", mouthErrors.last ?? 0)) px\n"
 
+            let yaws = solved.compactMap(\.yawDegrees).map(abs).sorted()
+            if !yaws.isEmpty {
+                out += "  yaw             median \(String(format: "%.1f", median(yaws)))\u{00B0}"
+                out += ", worst \(String(format: "%.1f", yaws.last ?? 0))\u{00B0}\n"
+            } else {
+                out += "  yaw             not reported by this detector\n"
+            }
+
             let magnifications = solved.map(\.magnification).sorted()
             out += "  magnification   median \(String(format: "%.2f", median(magnifications)))x"
             out += ", worst \(String(format: "%.2f", magnifications.last ?? 0))x\n"

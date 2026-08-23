@@ -8,7 +8,7 @@ enum CSVReport {
         "source", "face", "accepted", "rejections", "score",
         "coverage_pct", "magnification", "mouth_error_px",
         "stretch_applied_pct", "stretch_wanted_pct", "stretch_clamped",
-        "shear_clamped", "roll_deg", "yaw_deg", "native_ratio", "output", "failure",
+        "shear_clamped", "roll_deg", "yaw_deg", "pose_yaw_deg", "native_ratio", "output", "failure",
     ]
 
     static func render(_ tiles: [TileRecord]) -> String {
@@ -30,6 +30,7 @@ enum CSVReport {
                 quality.map { $0.shearWasClamped ? "yes" : "no" } ?? "",
                 format(quality?.rollCorrectionDegrees, decimals: 2),
                 format(tile.yawDegrees, decimals: 2),
+                format(quality?.yawDegrees, decimals: 2),
                 format(tile.nativeMouthDropRatio, decimals: 4),
                 tile.outputPath ?? "",
                 tile.failure ?? "",

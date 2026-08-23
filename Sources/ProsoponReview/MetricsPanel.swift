@@ -26,6 +26,9 @@ struct MetricsPanel: View {
                            note: quality.magnification > 1 ? "enlarged, will be soft" : nil,
                            warn: quality.magnification > 1.5)
                     column("Roll removed", signed(quality.rollCorrectionDegrees, "\u{00B0}"))
+                    column("Yaw", quality.yawDegrees.map { signed($0, "\u{00B0}") } ?? "not measured",
+                           note: quality.yawDegrees.map { abs($0) > 20 ? "turned away" : nil } ?? nil,
+                           warn: (quality.yawDegrees.map { abs($0) > 20 } ?? false))
                     column("Score", value(quality.score, ""), warn: !quality.isAccepted)
                 } else {
                     Text(entry.failure ?? "not solved")

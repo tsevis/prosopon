@@ -4,9 +4,12 @@ import Foundation
 public struct ModelBundle: Sendable {
     public let detector: String
     public let landmarks: String
+    /// Optional: without it, pose is simply not reported.
+    public let pose: String?
 
     static let detectorFile = "det_10g.onnx"
     static let landmarkFile = "2d106det.onnx"
+    static let poseFile = "1k3d68.onnx"
 
     /// Places the models are commonly unpacked to, tried in order.
     public static var searchPaths: [String] {
@@ -24,7 +27,11 @@ public struct ModelBundle: Sendable {
             let landmarks = (directory as NSString).appendingPathComponent(landmarkFile)
             if FileManager.default.fileExists(atPath: detector),
                FileManager.default.fileExists(atPath: landmarks) {
-                return ModelBundle(detector: detector, landmarks: landmarks)
+                let pose = (directory as NSString).appendingPathComponent(poseFile)
+                return ModelBundle(
+                    detector: detector, landmarks: landmarks,
+                    pose: FileManager.default.fileExists(atPath: pose) ? pose : nil
+                )
             }
         }
         throw InsightError.modelsNotFound(candidates)

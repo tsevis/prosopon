@@ -28,6 +28,9 @@ struct Align: AsyncParsableCommand {
     @Flag(name: .long, help: "Keep tiles that do not fill the whole canvas.")
     var allowPartialCoverage: Bool = false
 
+    @Option(name: .long, help: "Reject faces turned further than this many degrees.")
+    var maxYaw: Double = .infinity
+
     @Flag(name: .long, help: "Analyse only; write the manifest but no images.")
     var dryRun: Bool = false
 
@@ -58,7 +61,8 @@ struct Align: AsyncParsableCommand {
             solveOptions: shared.solveOptions,
             thresholds: QualityThresholds(
                 requiresFullCoverage: !allowPartialCoverage,
-                maxMagnification: maxMagnification
+                maxMagnification: maxMagnification,
+                maxYawDegrees: maxYaw
             ),
             selection: shared.faces,
             detector: try shared.makeDetector(),
@@ -69,6 +73,17 @@ struct Align: AsyncParsableCommand {
                 format: imageFormat
             )
         )
+
+        // Vision reports yaw in 45-degree steps, so a gate set against it would pass a
+        // face turned 36 degrees as though it were frontal. Better to say so than to let
+        // the flag look like it is doing something.
+        if maxYaw.isFinite && shared.detector == .vision {
+            let warning = "warning: --max-yaw does little with the vision detector, which reports"
+                + " yaw only in 45 degree steps. On a six-face photograph it gave 0 degrees for"
+                + " faces turned 13, 20 and 37 degrees. Use --detector insightface for a gate"
+                + " that means something.\n"
+            FileHandle.standardError.write(Data(warning.utf8))
+        }
 
         FileHandle.standardError.write(Data("Aligning \(urls.count) image(s)\n".utf8))
         let tiles = await BatchRunner.run(

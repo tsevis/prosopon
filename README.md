@@ -65,6 +65,7 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--model-path` | searched | directory holding `det_10g.onnx` and `2d106det.onnx` |
 | `--allow-partial-coverage` | off | keep tiles that do not fill the canvas |
 | `--max-magnification` | `2.0` | reject tiles enlarged beyond this |
+| `--max-yaw` | off | reject faces turned further than this, in degrees |
 | `--dry-run` | off | analyse and report, write no images |
 | `--resampler` | `lanczos` | `lanczos` (GPU), `lanczos-cpu`, or `coregraphics` |
 
@@ -134,6 +135,28 @@ worse. Core Graphics `.high` moves the median canonical landmark from 3.9 to 6.3
 pixels away from the reference. The model was trained behind OpenCV's bilinear, and
 matching that is the accurate choice, not the higher-quality filter.
 
+### Head pose
+
+`--detector insightface` also loads `1k3d68` and reports head pose, which `--max-yaw`
+then gates on. Yaw agrees with the reference implementation to **0.47 degrees** across
+faces turned from -55 to +7.
+
+Yaw is the one distortion the aligner cannot answer. A turned head foreshortens the
+interocular distance, so pinning the eyes to their fixed targets scales the whole face up
+to compensate - the cheek and jaw come out larger than on a frontal tile, and a fragment
+cut from one will not meet its neighbours. Because the eye coordinates are not
+negotiable, the scale is fully determined and there is no freedom left to correct with.
+Declining the tile is the only useful response, which is why this is a gate and not a
+correction.
+
+Yaw also feeds the score, so sorting brings the most frontal tiles forward even when
+nothing was rejected.
+
+**The gate needs the InsightFace detector.** Vision reports yaw only in 45 degree steps:
+on the six-face photograph it gave 0 for faces actually turned 13, 20 and 37 degrees.
+Setting `--max-yaw` with `--detector vision` prints a warning rather than quietly doing
+nothing.
+
 ### Which one is better?
 
 Not established. The port is faithful to its reference, and on a six-face group photo
@@ -142,6 +165,10 @@ mouth-drop ratios run consistently lower, which is a definitional difference rat
 an error — and deciding which is *closer to the truth* needs a corpus of real portraits
 that this machine does not have. InsightFace also found nothing at all in a photograph
 that had markers painted over the eyes, where Vision coped.
+
+There is one thing it is measurably better at: **pose**. Vision's 45 degree quantisation
+makes its yaw unusable for gating, while InsightFace's tracks the reference to half a
+degree. If yaw matters to you, that settles the choice on its own.
 
 ## Checking a batch
 

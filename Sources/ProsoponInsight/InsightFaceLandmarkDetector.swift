@@ -14,11 +14,16 @@ public final class InsightFaceLandmarkDetector: LandmarkDetector, @unchecked Sen
 
     private let detector: SCRFD
     private let landmarks: Landmark106
+    private let poseStage: Landmark3D68?
     public let minimumConfidence: Double
+
+    /// True when the pose model was found, so yaw is being reported rather than guessed.
+    public var reportsPose: Bool { poseStage != nil }
 
     public init(
         bundle: ModelBundle? = nil,
         minimumConfidence: Double = 0.5,
+        estimatesPose: Bool = true,
         useCoreML: Bool = true
     ) throws {
         let resolved = try bundle ?? ModelBundle.locate()
@@ -29,6 +34,11 @@ public final class InsightFaceLandmarkDetector: LandmarkDetector, @unchecked Sen
         self.landmarks = Landmark106(
             model: try ONNXModel(path: resolved.landmarks, useCoreML: useCoreML)
         )
+        if estimatesPose, let posePath = resolved.pose {
+            self.poseStage = Landmark3D68(model: try ONNXModel(path: posePath, useCoreML: useCoreML))
+        } else {
+            self.poseStage = nil
+        }
         self.minimumConfidence = minimumConfidence
     }
 
@@ -39,17 +49,21 @@ public final class InsightFaceLandmarkDetector: LandmarkDetector, @unchecked Sen
         try detector.detect(in: image).compactMap { detection in
             let points = try landmarks.points(in: image, box: detection.box)
             guard let canonical = Landmark106.canonicalLandmarks(from: points) else { return nil }
+            let pose = try poseStage?.pose(in: image, box: detection.box)
             return DetectedFace(
                 landmarks: canonical,
                 boundingBox: detection.box,
                 confidence: detection.score,
-                rollDegrees: roll(of: canonical)
+                // Roll is read off the eye line, which is what the aligner removes;
+                // the pose model's own roll refers to a different reference frame.
+                rollDegrees: roll(of: canonical),
+                yawDegrees: pose?.yaw,
+                pitchDegrees: pose?.pitch
             )
         }
     }
 
-    /// The 106-point model carries no pose head, so roll is read off the eye line.
-    /// Yaw and pitch are left unreported rather than guessed at.
+    /// Roll as the aligner sees it: the tilt of the line between the two eye centres.
     private func roll(of landmarks: FaceLandmarks) -> Double {
         let axis = landmarks.viewerRightEye - landmarks.viewerLeftEye
         return atan2(axis.y, axis.x) * 180 / .pi
