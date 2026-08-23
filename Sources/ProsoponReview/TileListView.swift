@@ -34,18 +34,14 @@ private struct TileRow: View {
     let entry: ReviewEntry
     let thumbnails: ThumbnailCache
     @State private var thumbnail: CGImage?
+    /// The manifest named a file the decoder could not open. Distinguished from "there
+    /// was never a file", because only one of the two is a fault.
+    @State private var loadFailed = false
 
     var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.2))
-                if let thumbnail {
-                    Image(decorative: thumbnail, scale: 1)
-                        .resizable().aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-            }
-            .frame(width: 44, height: 44)
+            thumbnailWell
+                .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name).lineLimit(1)
@@ -60,9 +56,42 @@ private struct TileRow: View {
             }
         }
         .task(id: entry.outputURL) {
+            loadFailed = false
             guard let url = entry.outputURL else { return }
-            thumbnail = await thumbnails.thumbnail(for: url)?.image
+            let loaded = await thumbnails.thumbnail(for: url)?.image
+            thumbnail = loaded
+            loadFailed = loaded == nil
         }
+    }
+
+    /// A rejected tile is never written, so there is nothing to load. Saying so is the
+    /// whole point: an empty well reads as a failure, and a declined tile is not one.
+    private var state: TileExportState {
+        if case .exported(let url) = entry.exportState, loadFailed { return .missing(url) }
+        return entry.exportState
+    }
+
+    @ViewBuilder
+    private var thumbnailWell: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.2))
+            if let thumbnail {
+                Image(decorative: thumbnail, scale: 1)
+                    .resizable().aspectRatio(contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                let state = state
+                Image(systemName: state.symbolName)
+                    .font(.system(size: 15))
+                    .foregroundStyle(state.isTrouble ? .orange : .secondary)
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                    )
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .help(state.caption ?? entry.name)
     }
 
     private var needsAttention: Bool {
@@ -70,16 +99,20 @@ private struct TileRow: View {
             || entry.quality?.isAccepted == false
             || entry.consensusMatched == false
             || (entry.consensusDisplacement ?? 0) > 2
+            || loadFailed
     }
 
     private var summary: String {
         if let failure = entry.failure { return failure }
+        if loadFailed, let caption = state.caption { return caption }
         if entry.consensusMatched == false { return "no match to the stack" }
         if let displacement = entry.consensusDisplacement {
             return String(format: "%.1f px from consensus", displacement)
         }
         guard let quality = entry.quality else { return "not solved" }
-        if !quality.isAccepted { return quality.rejections.map(\.rawValue).joined(separator: ", ") }
+        if !quality.isAccepted {
+            return quality.rejections.map(TileExportState.phrase).joined(separator: ", ")
+        }
         return String(format: "score %.2f", quality.score)
     }
 }

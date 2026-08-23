@@ -35,6 +35,25 @@ struct CorrectionWriterTests {
         #expect(try Data(contentsOf: directory.appendingPathComponent("a.png")) == before)
     }
 
+    @Test("a correction keeps the detector's yaw in the manifest")
+    func correctionPreservesYaw() throws {
+        // The writer copies the entry's quality report over the record's. Before the yaw
+        // was carried through the entry, saving one correction quietly erased the pose
+        // measurement for that tile -- and the tile it erased it from was, by definition,
+        // one somebody had just looked at.
+        let directory = try Fixture.makeRun(names: ["a"], yaws: [-19.0])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        session.selection = session.entries[0].id
+        session.moveLandmark(.mouth, toCanvasPoint: Point2D(132, 208))
+        _ = try save(session)
+
+        let record = try #require(try manifest(at: directory).tiles.first)
+        #expect(record.yawDegrees == -19.0)
+        #expect(record.quality?.yawDegrees == -19.0)
+    }
+
     @Test("only the edited tile is rewritten")
     func onlyEditedTilesAreRewritten() throws {
         let directory = try Fixture.makeRun(names: ["a", "b", "c"])

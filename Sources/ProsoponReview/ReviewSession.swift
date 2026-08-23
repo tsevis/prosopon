@@ -46,6 +46,7 @@ public final class ReviewSession {
     public private(set) var spec: CanvasSpec = .standard
     public private(set) var options: SolveOptions = .default
     public private(set) var resampler: String = "lanczos"
+    public private(set) var detector: String = "vision"
 
     public var sortOrder: ReviewSortOrder = .triage {
         didSet { applySort() }
@@ -83,6 +84,7 @@ public final class ReviewSession {
             correctsHorizontalMouthOffset: manifest.maxShear > 0
         )
         resampler = manifest.resampler
+        detector = manifest.detector
 
         entries = manifest.tiles.compactMap { record in
             guard let landmarks = record.landmarks else { return nil }
@@ -94,6 +96,7 @@ public final class ReviewSession {
                 sourceWidth: record.sourceWidth,
                 sourceHeight: record.sourceHeight,
                 detected: landmarks,
+                detectedYawDegrees: record.yawDegrees,
                 spec: spec,
                 options: options
             )
@@ -221,4 +224,14 @@ public final class ReviewSession {
     public var editCount: Int { editedEntries.count }
 
     public func recordSave(_ summary: String) { lastSaveSummary = summary }
+
+    /// What to say beside a yaw figure this detector cannot really support.
+    ///
+    /// Vision reports yaw in 45 degree steps -- on a six-face photograph it gave 0 for
+    /// faces turned 13, 20 and 37 degrees. Now that the number reaches the panel, a bare
+    /// "+0.00 degrees" would read as a frontal face rather than as a detector with
+    /// nothing useful to say. `nil` when the figure stands on its own.
+    public var yawCaveat: String? {
+        detector == "vision" ? "vision rounds to 45\u{00B0} steps" : nil
+    }
 }

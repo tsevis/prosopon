@@ -6,6 +6,8 @@ import SwiftUI
 struct MetricsPanel: View {
     let entry: ReviewEntry?
     let spec: CanvasSpec
+    /// Set when the detector's yaw needs qualifying rather than presenting bare.
+    let yawCaveat: String?
     /// True while a drag is in flight, when these describe a solve not yet committed.
     let isProvisional: Bool
 
@@ -27,7 +29,7 @@ struct MetricsPanel: View {
                            warn: quality.magnification > 1.5)
                     column("Roll removed", signed(quality.rollCorrectionDegrees, "\u{00B0}"))
                     column("Yaw", quality.yawDegrees.map { signed($0, "\u{00B0}") } ?? "not measured",
-                           note: quality.yawDegrees.map { abs($0) > 20 ? "turned away" : nil } ?? nil,
+                           note: yawNote(quality.yawDegrees),
                            warn: (quality.yawDegrees.map { abs($0) > 20 } ?? false))
                     column("Score", value(quality.score, ""), warn: !quality.isAccepted)
                 } else {
@@ -57,6 +59,14 @@ struct MetricsPanel: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(white: 0.15))
+    }
+
+    /// A turned head is worth flagging; a figure from a detector that rounds to 45
+    /// degree steps is worth qualifying. Both matter more than the number itself.
+    private func yawNote(_ degrees: Double?) -> String? {
+        guard let degrees else { return nil }
+        if abs(degrees) > 20 { return "turned away" }
+        return yawCaveat
     }
 
     private func column(

@@ -15,6 +15,14 @@ public struct ReviewEntry: Identifiable, Sendable {
     public let sourceWidth: Int
     public let sourceHeight: Int
 
+    /// What the detector reported for head pose, carried through from the manifest.
+    ///
+    /// The reviewer re-solves the geometry from the landmarks, but yaw is not recoverable
+    /// that way -- it comes from a 3D landmark model, not from three points. Dropping it
+    /// here made the metrics panel read "not measured" over a manifest that held a value,
+    /// and made saving a correction write that value out of the tile's quality report.
+    public let detectedYawDegrees: Double?
+
     /// What the detector originally produced, kept so a correction can be undone.
     public let detected: FaceLandmarks
     public private(set) var landmarks: FaceLandmarks
@@ -34,6 +42,7 @@ public struct ReviewEntry: Identifiable, Sendable {
     public init(
         id: String, sourceURL: URL, outputURL: URL?, faceIndex: Int,
         sourceWidth: Int, sourceHeight: Int, detected: FaceLandmarks,
+        detectedYawDegrees: Double? = nil,
         spec: CanvasSpec = .standard, options: SolveOptions = .default
     ) {
         self.id = id
@@ -42,6 +51,7 @@ public struct ReviewEntry: Identifiable, Sendable {
         self.faceIndex = faceIndex
         self.sourceWidth = sourceWidth
         self.sourceHeight = sourceHeight
+        self.detectedYawDegrees = detectedYawDegrees
         self.detected = detected
         self.landmarks = detected
         resolve(spec: spec, options: options)
@@ -58,7 +68,9 @@ public struct ReviewEntry: Identifiable, Sendable {
             )
             alignment = solved
             fit = measured
-            quality = QualityReport.evaluate(alignment: solved, fit: measured)
+            quality = QualityReport.evaluate(
+                alignment: solved, fit: measured, yawDegrees: detectedYawDegrees
+            )
             failure = nil
         } catch {
             alignment = nil

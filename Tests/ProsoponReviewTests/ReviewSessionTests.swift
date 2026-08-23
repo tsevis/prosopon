@@ -22,6 +22,8 @@ enum Fixture {
     static func makeRun(
         names: [String],
         offsets: [Point2D]? = nil,
+        yaws: [Double?]? = nil,
+        detector: String = "vision",
         writeTiles: Bool = true,
         qaDisplacements: [String: (Double, Double)]? = nil
     ) throws -> URL {
@@ -48,14 +50,15 @@ enum Fixture {
             records.append(TileRecord(
                 sourcePath: sourceURL.path, sourceWidth: 900, sourceHeight: 900,
                 faceIndex: 0, outputPath: outputPath, accepted: true,
-                landmarks: marks, transform: alignment.transform
+                landmarks: marks, transform: alignment.transform,
+                yawDegrees: yaws?[index] ?? nil
             ))
         }
 
         let manifest = RunManifest(
             canvasSize: canvas, gridStep: canvas / 16,
             targets: [:], maxStretch: 0.05, maxShear: 0.05,
-            detector: "vision", resampler: "coregraphics", tiles: records
+            detector: detector, resampler: "coregraphics", tiles: records
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -270,6 +273,48 @@ struct ReviewSessionTests {
         #expect(session.editCount == 3)
         session.revertAll()
         #expect(session.editCount == 0)
+    }
+
+    @Test("the manifest's yaw reaches the loaded entries")
+    func loadsDetectorYaw() throws {
+        // Written by `TileRecord`'s own encoder, so the field the session reads is the
+        // field `align` writes rather than a hand-made copy of it.
+        let directory = try Fixture.makeRun(names: ["a", "b"], yaws: [-22.5, nil])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        let byName = Dictionary(uniqueKeysWithValues: session.entries.map { ($0.name, $0) })
+
+        // The fixture names each source `<name>-source.png`, and an entry is named after
+        // its source rather than its tile.
+        #expect(byName["a-source"]?.detectedYawDegrees == -22.5)
+        #expect(byName["a-source"]?.quality?.yawDegrees == -22.5)
+        #expect(byName["b-source"]?.detectedYawDegrees == nil)
+        #expect(byName["b-source"]?.quality?.yawDegrees == nil)
+    }
+
+    @Test("a Vision run qualifies its own yaw figure")
+    func visionYawIsQualified() throws {
+        // Vision reports 0 for faces turned 13, 20 and 37 degrees. Showing that bare,
+        // now that it reaches the panel, would state a frontal face on no evidence.
+        let directory = try Fixture.makeRun(names: ["a"], yaws: [0])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        #expect(session.detector == "vision")
+        #expect(session.yawCaveat != nil)
+    }
+
+    @Test("an InsightFace run presents its yaw without apology")
+    func insightFaceYawStandsAlone() throws {
+        // Its yaw tracks the reference implementation to half a degree, so the figure
+        // stands on its own.
+        let directory = try Fixture.makeRun(names: ["a"], yaws: [-14], detector: "insightface")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        #expect(session.detector == "insightface")
+        #expect(session.yawCaveat == nil)
     }
 }
 

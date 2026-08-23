@@ -39,7 +39,10 @@ public struct TileDetailView: View {
         VStack(spacing: 0) {
             canvas
             Divider()
-            MetricsPanel(entry: displayedEntry, spec: session.spec, isProvisional: dragging != nil)
+            MetricsPanel(
+                entry: displayedEntry, spec: session.spec,
+                yawCaveat: session.yawCaveat, isProvisional: dragging != nil
+            )
         }
     }
 
