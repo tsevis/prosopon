@@ -1,4 +1,5 @@
 import Foundation
+import ProsoponCore
 
 /// Runs `pipeline.process` over many images with bounded concurrency, reporting
 /// progress to stderr so stdout stays clean for piping.

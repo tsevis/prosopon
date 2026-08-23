@@ -1,4 +1,5 @@
 import Foundation
+import ProsoponCore
 
 /// The manifest, flattened for sorting in a spreadsheet. Reviewing hundreds of tiles
 /// means sorting by score and looking at the worst twenty; CSV is the shortest path there.

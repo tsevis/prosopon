@@ -30,6 +30,13 @@ Align and write tiles, with verification overlays:
 .build/release/prosopon align ~/Pictures/portraits -o ~/aligned --overlay
 ```
 
+Fix the handful the detector got wrong:
+
+```bash
+swift build -c release
+.build/release/prosopon-review ~/aligned
+```
+
 Check that the batch registered, before committing to it:
 
 ```bash
@@ -129,6 +136,37 @@ Two figures matter in the summary:
 Tiles that cannot be matched at all — a mirrored face, an unusual pose, a detection that
 landed on the wrong feature — are reported **separately** rather than as a large
 displacement, because the number would be meaningless and the fix is different.
+
+## Reviewing corrections
+
+`prosopon-review` opens a folder written by `align` — it reads `manifest.json` from that
+run, and `qa.json` too when one is there, so the queue can be ordered by distance from
+the stack consensus. Worst first, because finding the few bad tiles is the whole point;
+nobody should page through three hundred good ones.
+
+Dragging a marker means **"the feature you are aiming at is actually here."** The point
+travels back through the transform to become the corrected source landmark, and on
+release the image moves so that feature lands on the crosshair. The marker returns to its
+target, because in canvas space that is where the landmarks always are.
+
+Corrections have to be made in source space for this reason: in canvas space the eyes sit
+on their targets by construction whatever the detector did, so there would be nothing to
+drag. The image deliberately does not follow the marker mid-drag either — re-solving live
+would slide the feature out from under the cursor as it was being aimed at. The metrics
+*do* update live, from a provisional solve, so the mouth error can be watched falling
+before letting go.
+
+Saving re-renders only the edited tiles and updates the manifest in place, so a later
+`stack` or `qa` picks the corrections up with no further step. A correction that pushes a
+tile past a gate removes its file and clears its path, rather than leaving a stale tile
+for the next stack run to swallow.
+
+| Key | |
+|---|---|
+| ↑ / ↓ | previous / next tile |
+| ⌘Z | revert the selected tile |
+| ⌘S | save corrections |
+| ⌘O | open another run |
 
 ## Resampling
 

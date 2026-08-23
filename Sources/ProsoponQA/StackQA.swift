@@ -1,28 +1,6 @@
 import Foundation
 import ProsoponCore
 
-public enum Landmark: String, CaseIterable, Sendable, Codable {
-    case viewerLeftEye
-    case viewerRightEye
-    case mouth
-
-    public func target(in spec: CanvasSpec) -> Point2D {
-        switch self {
-        case .viewerLeftEye: spec.viewerLeftEye
-        case .viewerRightEye: spec.viewerRightEye
-        case .mouth: spec.mouth
-        }
-    }
-
-    public var shortName: String {
-        switch self {
-        case .viewerLeftEye: "L eye"
-        case .viewerRightEye: "R eye"
-        case .mouth: "mouth"
-        }
-    }
-}
-
 /// One tile measured against the stack's consensus.
 public struct TileQA: Sendable, Codable {
     public var name: String

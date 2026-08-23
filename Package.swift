@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "prosopon", targets: ["ProsoponCLI"]),
+        .executable(name: "prosopon-review", targets: ["ProsoponReviewApp"]),
         .library(name: "ProsoponCore", targets: ["ProsoponCore"]),
     ],
     dependencies: [
@@ -18,6 +19,8 @@ let package = Package(
         .target(name: "ProsoponVision", dependencies: ["ProsoponCore", "ProsoponIO"]),
         .target(name: "ProsoponPSD", dependencies: ["ProsoponIO"]),
         .target(name: "ProsoponQA", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
+        .target(name: "ProsoponReview", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponQA"]),
+        .executableTarget(name: "ProsoponReviewApp", dependencies: ["ProsoponReview"]),
         .executableTarget(
             name: "ProsoponCLI",
             dependencies: [
@@ -29,6 +32,7 @@ let package = Package(
         .testTarget(name: "ProsoponIOTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponRenderTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponQATests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponQA"]),
+        .testTarget(name: "ProsoponReviewTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponReview"]),
         .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]
 )

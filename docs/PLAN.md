@@ -345,8 +345,10 @@ Built and tested (**39 tests green**, `swift test`):
   multi-gigabyte document never has to fit in memory.
 - `ProsoponQA` — streaming mean and deviation over a stack, plus per-tile registration
   against the stack's own consensus.
+- `ProsoponReview` — the review session, live preview rendering, and the correction
+  writer, with the SwiftUI views on top of them.
 - `prosopon align`, `prosopon calibrate`, `prosopon stack` and `prosopon qa`, with a JSON
-  manifest and sortable CSVs.
+  manifest and sortable CSVs, plus the `prosopon-review` app.
 
 Verified on a real portrait: coverage 100 %, mouth error **0.00 px**, stretch −3.39 %,
 and the overlay's discs sit on the eyes and mouth exactly as in the reference images.
@@ -362,9 +364,7 @@ and staying flat rather than growing with the layer count.
 
 ### Next, in order
 
-1. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
-   draggable landmarks and a live re-solve for the handful the detector gets wrong.
-2. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
+1. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
    provider, plus yaw gating.
 
 ### A caveat on the "real portrait" check

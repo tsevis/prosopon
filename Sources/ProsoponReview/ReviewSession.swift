@@ -1,0 +1,206 @@
+import Foundation
+import Observation
+import ProsoponCore
+import ProsoponIO
+
+public enum ReviewSortOrder: String, CaseIterable, Sendable {
+    /// Worst first. The point of the app is the handful the detector got wrong.
+    case triage
+    /// By how far the tile sat from the stack consensus, when a QA run has been read.
+    case consensus
+    case name
+
+    public var label: String {
+        switch self {
+        case .triage: "Needs attention"
+        case .consensus: "Distance from consensus"
+        case .name: "Name"
+        }
+    }
+}
+
+public enum ReviewLoadError: Error, CustomStringConvertible {
+    case noManifest(URL)
+    case unreadableManifest(URL, String)
+    case emptyManifest(URL)
+
+    public var description: String {
+        switch self {
+        case .noManifest(let url):
+            "no manifest.json in \(url.path). Run `prosopon align` first."
+        case .unreadableManifest(let url, let reason):
+            "could not read \(url.lastPathComponent): \(reason)"
+        case .emptyManifest(let url):
+            "\(url.lastPathComponent) lists no tiles"
+        }
+    }
+}
+
+/// The whole review: what was loaded, what is selected, and what has been corrected.
+@MainActor
+@Observable
+public final class ReviewSession {
+    public private(set) var directory: URL
+    public private(set) var entries: [ReviewEntry] = []
+    public private(set) var spec: CanvasSpec = .standard
+    public private(set) var options: SolveOptions = .default
+    public private(set) var resampler: String = "lanczos"
+
+    public var sortOrder: ReviewSortOrder = .triage {
+        didSet { applySort() }
+    }
+    public var selection: ReviewEntry.ID?
+    public private(set) var lastSaveSummary: String?
+
+    public init(directory: URL) throws {
+        self.directory = directory
+        try load()
+    }
+
+    /// Reads `manifest.json`, and `qa.json` alongside it when a QA run has been done.
+    private func load() throws {
+        let manifestURL = directory.appendingPathComponent("manifest.json")
+        guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+            throw ReviewLoadError.noManifest(directory)
+        }
+
+        let manifest: RunManifest
+        do {
+            manifest = try JSONDecoder().decode(RunManifest.self, from: Data(contentsOf: manifestURL))
+        } catch {
+            throw ReviewLoadError.unreadableManifest(manifestURL, "\(error)")
+        }
+
+        spec = CanvasSpec.standard.scaled(toSize: manifest.canvasSize)
+        options = SolveOptions(
+            maxStretch: manifest.maxStretch,
+            maxShear: manifest.maxShear,
+            correctsHorizontalMouthOffset: manifest.maxShear > 0
+        )
+        resampler = manifest.resampler
+
+        entries = manifest.tiles.compactMap { record in
+            guard let landmarks = record.landmarks else { return nil }
+            return ReviewEntry(
+                id: "\(record.sourcePath)#\(record.faceIndex)",
+                sourceURL: URL(fileURLWithPath: record.sourcePath),
+                outputURL: record.outputPath.map { URL(fileURLWithPath: $0) },
+                faceIndex: record.faceIndex,
+                sourceWidth: record.sourceWidth,
+                sourceHeight: record.sourceHeight,
+                detected: landmarks,
+                spec: spec,
+                options: options
+            )
+        }
+        guard !entries.isEmpty else { throw ReviewLoadError.emptyManifest(manifestURL) }
+
+        mergeQAReport()
+        applySort()
+        selection = entries.first?.id
+    }
+
+    /// Folds in `qa.json` when it is there, so the ordering can follow the consensus
+    /// measurement rather than the per-tile score alone.
+    private func mergeQAReport() {
+        let url = directory.appendingPathComponent("qa.json")
+        guard let data = try? Data(contentsOf: url),
+              let report = try? JSONDecoder().decode(QASummary.self, from: data)
+        else { return }
+
+        var byName: [String: QASummary.Tile] = [:]
+        for tile in report.tiles { byName[tile.name] = tile }
+
+        for index in entries.indices {
+            let key = entries[index].outputURL?.deletingPathExtension().lastPathComponent
+                ?? entries[index].name
+            guard let tile = byName[key] else { continue }
+            let displacements = tile.offsets.values.map { ($0.dx * $0.dx + $0.dy * $0.dy).squareRoot() }
+            entries[index].consensusDisplacement = displacements.max()
+            entries[index].consensusMatched = (tile.offsets.values.map(\.correlation).min() ?? 0) >= 0.7
+        }
+    }
+
+    // MARK: Ordering and selection
+
+    private func applySort() {
+        switch sortOrder {
+        case .triage:
+            entries.sort { $0.triageRank < $1.triageRank }
+        case .consensus:
+            entries.sort {
+                // Unmatched tiles first: they need a decision, not a measurement.
+                let left = $0.consensusMatched == false ? Double.infinity : ($0.consensusDisplacement ?? -1)
+                let right = $1.consensusMatched == false ? Double.infinity : ($1.consensusDisplacement ?? -1)
+                return left > right
+            }
+        case .name:
+            entries.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+    }
+
+    public var selected: ReviewEntry? {
+        guard let selection else { return nil }
+        return entries.first { $0.id == selection }
+    }
+
+    public var selectedIndex: Int? {
+        guard let selection else { return nil }
+        return entries.firstIndex { $0.id == selection }
+    }
+
+    public func selectNext() { move(by: 1) }
+    public func selectPrevious() { move(by: -1) }
+
+    private func move(by delta: Int) {
+        guard !entries.isEmpty else { return }
+        let current = selectedIndex ?? 0
+        selection = entries[min(max(current + delta, 0), entries.count - 1)].id
+    }
+
+    // MARK: Editing
+
+    public func moveLandmark(_ which: Landmark, toCanvasPoint point: Point2D) {
+        guard let index = selectedIndex else { return }
+        entries[index].setLandmark(which, toCanvasPoint: point, spec: spec, options: options)
+    }
+
+    /// The solve that *would* result from putting `which` at `point`, without committing.
+    ///
+    /// Lets the metrics track a drag in progress while the rendered image stays put, so
+    /// the reviewer can see the mouth error fall before deciding to let go.
+    public func prospectiveEntry(_ which: Landmark, atCanvasPoint point: Point2D) -> ReviewEntry? {
+        guard var entry = selected else { return nil }
+        entry.setLandmark(which, toCanvasPoint: point, spec: spec, options: options)
+        return entry
+    }
+
+    public func revertSelected() {
+        guard let index = selectedIndex else { return }
+        entries[index].revert(spec: spec, options: options)
+    }
+
+    public func revertAll() {
+        for index in entries.indices { entries[index].revert(spec: spec, options: options) }
+    }
+
+    public var editedEntries: [ReviewEntry] { entries.filter(\.isEdited) }
+    public var editCount: Int { editedEntries.count }
+
+    public func recordSave(_ summary: String) { lastSaveSummary = summary }
+}
+
+/// Just enough of `qa.json` to sort by. Declared here rather than shared with the QA
+/// module so that reading an older or partial report cannot fail the whole load.
+struct QASummary: Decodable {
+    struct Offset: Decodable {
+        var dx: Double
+        var dy: Double
+        var correlation: Double
+    }
+    struct Tile: Decodable {
+        var name: String
+        var offsets: [String: Offset]
+    }
+    var tiles: [Tile]
+}
