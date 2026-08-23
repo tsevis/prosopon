@@ -39,5 +39,6 @@ struct RunManifest: Codable, Sendable {
     var maxStretch: Double
     var maxShear: Double
     var detector: String
+    var resampler: String
     var tiles: [TileRecord]
 }

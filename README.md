@@ -51,6 +51,7 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--allow-partial-coverage` | off | keep tiles that do not fill the canvas |
 | `--max-magnification` | `2.0` | reject tiles enlarged beyond this |
 | `--dry-run` | off | analyse and report, write no images |
+| `--resampler` | `lanczos` | `lanczos` (GPU), `lanczos-cpu`, or `coregraphics` |
 
 ### `stack` options
 
@@ -85,12 +86,38 @@ Because the stretch is vertical-only, the aspect change *is* the stretch factor,
 would halve the per-axis error, but any horizontal scale about `x = 1024` moves the eyes
 off 512 and 1536.
 
+## Resampling
+
+Tiles are resampled with **Lanczos-3 on the GPU**, in linear light. Two things make that
+worth the trouble over Core Graphics' `.high`:
+
+- **Fidelity.** Under a half-pixel shift — the worst case for any interpolator — Lanczos-3
+  keeps 100.7 % of an eight-pixel-period signal. Core Graphics keeps 0.9239, which is
+  `cos(π/8)` to five decimals: the exact response of bilinear interpolation. Magnifying
+  fourfold, Lanczos is off by 0.03 % against 1.02 %. Every tile in the stack pays that
+  difference once.
+- **Reduction.** A filter whose footprint stays three source pixels wide aliases as soon
+  as the source is being shrunk. The kernel here widens by the inverse of the per-axis
+  scale, measured separately along each source axis so rotation does not confuse it, and
+  capped at sixteen source pixels. A one-pixel checkerboard reduced fourfold comes out
+  flat to within 1e-15 rather than as moire.
+
+It costs about 10 % more wall-clock than Core Graphics end to end (96 ms against 87 ms
+per image on an M1 Ultra, both dominated by JPEG decode and face detection). The CPU
+implementation is ten times slower again and exists as the reference the GPU kernel is
+checked against, tap for tap.
+
+A Laplacian-variance "sharpness" reading actually prefers Core Graphics on real photos.
+That proxy rewards ringing and blockiness; the frequency measurements above show what it
+is really registering is error.
+
 ## Layout
 
 | Target | |
 |---|---|
 | `ProsoponCore` | geometry, solver, coverage, quality gates — no I/O, no UI |
 | `ProsoponIO` | ImageIO loading with EXIF baked in, linear-light rendering, overlays |
+| `ProsoponRender` | Metal Lanczos-3, a CPU reference, and the Core Graphics fallback |
 | `ProsoponVision` | Apple Vision landmarks |
 | `ProsoponPSD` | layered `.psd` / `.psb` writer |
 | `ProsoponCLI` | `align`, `calibrate`, `stack` |
@@ -108,6 +135,12 @@ asserting the eyes never move), polygon clipping for coverage, a pixel-level che
 landmarks land on their targets in the rendered output without mirroring or flipping,
 PackBits round-trips, and a structural reader that walks every declared section length
 in a written document and checks it lands where the content actually ends.
+
+The geometry suite runs against all three renderers, so a coordinate bug in one shows up
+as a disagreement with the other two. Resampling is pinned by an identity transform
+reproducing its source bit-for-bit — Lanczos is 1 at the centre tap and 0 at every other
+integer, so anything that misaligns the taps blurs and is caught — and by comparing the
+GPU kernel against the CPU reference, which agree to 2 parts in 65535.
 
 The Swift tests prove the document is internally consistent. To prove a *third-party*
 reader agrees — that channel order, PackBits coding, alpha handling and the merged

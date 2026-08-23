@@ -2,9 +2,14 @@ import CoreGraphics
 import Foundation
 import ProsoponCore
 import Testing
-@testable import ProsoponIO
+import ProsoponIO
+@testable import ProsoponRender
 
 /// End-to-end checks that the *pixels* land where the maths says they should.
+///
+/// Every case runs against all three renderers. They differ in how they filter, but
+/// not in where anything lands, so a geometry bug in one shows up immediately as a
+/// disagreement with the other two.
 ///
 /// The solver tests prove the transform is right in the abstract. These prove the
 /// Core Graphics plumbing around it is right too — and that is where the real risk
@@ -13,6 +18,13 @@ import Testing
 /// upside down or mirrored while still looking like a face.
 @Suite("Render geometry")
 struct RenderGeometryTests {
+
+    /// Metal is unavailable in some CI environments; skip rather than fail there.
+    static let renderers: [Resampler] = {
+        let candidates: [Resampler] = [.coreGraphics, .lanczosCPU, .lanczos]
+        return candidates.filter { (try? $0.makeRenderer()) != nil }
+    }()
+
 
     private struct Marker {
         let point: Point2D
@@ -84,8 +96,8 @@ struct RenderGeometryTests {
                 Int(pixels.data[offset + 2]), Int(pixels.data[offset + 3]))
     }
 
-    @Test("each landmark's pixels land on its target coordinate")
-    func landmarksLandOnTargets() throws {
+    @Test("each landmark's pixels land on its target coordinate", arguments: renderers)
+    func landmarksLandOnTargets(resampler: Resampler) throws {
         let spec = CanvasSpec.standard
         let landmarks = FaceLandmarks(
             viewerLeftEye: leftEye.point,
@@ -97,26 +109,26 @@ struct RenderGeometryTests {
         #expect(!alignment.stretchWasClamped)
         #expect(alignment.mouthResidual.length < 1e-6)
 
-        let tile = try #require(CanvasRenderer(spec: spec).render(makeSource(), using: alignment.transform))
+        let tile = try resampler.makeRenderer(spec: spec).render(makeSource(), using: alignment.transform)
         #expect(tile.width == 2048 && tile.height == 2048)
 
         let read = try pixels(of: tile)
 
         let atLeftEye = try #require(color(read, at: spec.viewerLeftEye))
         #expect(atLeftEye.r > 200 && atLeftEye.g < 60 && atLeftEye.b < 60,
-                "expected red at the left-eye target, got \(atLeftEye)")
+                "\(resampler.rawValue): expected red at the left-eye target, got \(atLeftEye)")
 
         let atRightEye = try #require(color(read, at: spec.viewerRightEye))
         #expect(atRightEye.g > 200 && atRightEye.r < 60 && atRightEye.b < 60,
-                "expected green at the right-eye target, got \(atRightEye)")
+                "\(resampler.rawValue): expected green at the right-eye target, got \(atRightEye)")
 
         let atMouth = try #require(color(read, at: spec.mouth))
         #expect(atMouth.b > 200 && atMouth.r < 60 && atMouth.g < 60,
-                "expected blue at the mouth target, got \(atMouth)")
+                "\(resampler.rawValue): expected blue at the mouth target, got \(atMouth)")
     }
 
-    @Test("the output is neither mirrored nor flipped")
-    func orientationIsPreserved() throws {
+    @Test("the output is neither mirrored nor flipped", arguments: renderers)
+    func orientationIsPreserved(resampler: Resampler) throws {
         let spec = CanvasSpec.standard
         let landmarks = FaceLandmarks(
             viewerLeftEye: leftEye.point,
@@ -124,7 +136,7 @@ struct RenderGeometryTests {
             mouth: mouth.point
         )
         let alignment = try AlignmentSolver.solve(landmarks: landmarks, spec: spec)
-        let tile = try #require(CanvasRenderer(spec: spec).render(makeSource(), using: alignment.transform))
+        let tile = try resampler.makeRenderer(spec: spec).render(makeSource(), using: alignment.transform)
         let read = try pixels(of: tile)
 
         // The yellow marker sits above and to the left of the left eye in the source,
@@ -135,11 +147,11 @@ struct RenderGeometryTests {
 
         let atMarker = try #require(color(read, at: expected), "marker mapped off-canvas to \(expected)")
         #expect(atMarker.r > 200 && atMarker.g > 200 && atMarker.b < 60,
-                "expected yellow where the asymmetry marker maps to, got \(atMarker)")
+                "\(resampler.rawValue): expected yellow at the asymmetry marker, got \(atMarker)")
     }
 
-    @Test("area outside the source stays transparent rather than being invented")
-    func uncoveredAreaIsTransparent() throws {
+    @Test("area outside the source stays transparent rather than being invented", arguments: renderers)
+    func uncoveredAreaIsTransparent(resampler: Resampler) throws {
         let spec = CanvasSpec.standard
         // A face filling almost the whole frame: the canvas will overhang the source.
         let landmarks = FaceLandmarks(
@@ -155,9 +167,9 @@ struct RenderGeometryTests {
         )
         #expect(!fit.isFullyCovered)
 
-        let tile = try #require(CanvasRenderer(spec: spec).render(makeSource(), using: alignment.transform))
+        let tile = try resampler.makeRenderer(spec: spec).render(makeSource(), using: alignment.transform)
         let read = try pixels(of: tile)
-        #expect(try #require(color(read, at: Point2D(4, 4))).a == 0, "the top-left corner should be empty")
+        #expect(try #require(color(read, at: Point2D(4, 4))).a == 0, "\(resampler.rawValue): the top-left corner should be empty")
     }
 
     @Test("the overlay renders without disturbing the tile's dimensions")
@@ -167,7 +179,7 @@ struct RenderGeometryTests {
             viewerLeftEye: leftEye.point, viewerRightEye: rightEye.point, mouth: mouth.point
         )
         let alignment = try AlignmentSolver.solve(landmarks: landmarks, spec: spec)
-        let tile = try #require(CanvasRenderer(spec: spec).render(makeSource(), using: alignment.transform))
+        let tile = try CoreGraphicsRenderer(spec: spec).render(makeSource(), using: alignment.transform)
         let overlaid = try #require(OverlayRenderer(spec: spec).draw(over: tile))
         #expect(overlaid.width == 2048 && overlaid.height == 2048)
     }

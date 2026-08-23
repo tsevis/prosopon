@@ -1,4 +1,5 @@
 import ArgumentParser
+import ProsoponRender
 import Foundation
 import ProsoponCore
 import ProsoponIO
@@ -62,3 +63,5 @@ struct SharedOptions: ParsableArguments {
         return urls
     }
 }
+
+extension Resampler: ExpressibleByArgument {}

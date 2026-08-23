@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import ProsoponCore
 import ProsoponIO
+import ProsoponRender
 import ProsoponVision
 
 struct Align: AsyncParsableCommand {
@@ -30,6 +31,9 @@ struct Align: AsyncParsableCommand {
     @Flag(name: .long, help: "Analyse only; write the manifest but no images.")
     var dryRun: Bool = false
 
+    @Option(name: .long, help: "Resampler: lanczos (GPU), lanczos-cpu, or coregraphics.")
+    var resampler: Resampler = .lanczos
+
     mutating func run() async throws {
         let urls = try shared.resolvedInputs()
         guard let imageFormat = ImageFormat(rawValue: format.lowercased()) else {
@@ -46,6 +50,9 @@ struct Align: AsyncParsableCommand {
         }
 
         let spec = CanvasSpec.standard
+        // Built once and shared: compiling the shader and creating the queue is a
+        // per-process cost, not a per-image one.
+        let renderer = try resampler.makeRenderer(spec: spec)
         let pipeline = Pipeline(
             spec: spec,
             solveOptions: shared.solveOptions,
@@ -58,6 +65,7 @@ struct Align: AsyncParsableCommand {
                 usesPupils: shared.usePupils,
                 minimumConfidence: shared.minConfidence
             ),
+            renderer: renderer,
             output: dryRun ? nil : OutputPlan(
                 directory: outputDirectory,
                 overlayDirectory: overlayDirectory,
@@ -89,6 +97,7 @@ struct Align: AsyncParsableCommand {
             maxStretch: shared.maxStretch,
             maxShear: shared.noShear ? 0 : shared.maxShear,
             detector: "vision",
+            resampler: resampler.rawValue,
             tiles: tiles
         )
 

@@ -14,17 +14,19 @@ let package = Package(
     targets: [
         .target(name: "ProsoponCore"),
         .target(name: "ProsoponIO", dependencies: ["ProsoponCore"]),
+        .target(name: "ProsoponRender", dependencies: ["ProsoponCore"]),
         .target(name: "ProsoponVision", dependencies: ["ProsoponCore", "ProsoponIO"]),
         .target(name: "ProsoponPSD", dependencies: ["ProsoponIO"]),
         .executableTarget(
             name: "ProsoponCLI",
             dependencies: [
-                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD",
+                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD", "ProsoponRender",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
         .testTarget(name: "ProsoponCoreTests", dependencies: ["ProsoponCore"]),
-        .testTarget(name: "ProsoponIOTests", dependencies: ["ProsoponCore", "ProsoponIO"]),
+        .testTarget(name: "ProsoponIOTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
+        .testTarget(name: "ProsoponRenderTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]
 )

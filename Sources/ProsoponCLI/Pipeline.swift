@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ProsoponCore
 import ProsoponIO
+import ProsoponRender
 import ProsoponVision
 
 struct OutputPlan: Sendable {
@@ -20,6 +21,7 @@ struct Pipeline: Sendable {
     var thresholds: QualityThresholds
     var selection: FaceSelection
     var detector: VisionLandmarkDetector
+    var renderer: any TileRenderer
     var output: OutputPlan?
 
     func process(_ url: URL) -> [TileRecord] {
@@ -107,9 +109,7 @@ struct Pipeline: Sendable {
         let stem = url.deletingPathExtension().lastPathComponent
         let name = total > 1 ? "\(stem)_f\(index)" : stem
 
-        guard let tile = CanvasRenderer(spec: spec).render(image, using: alignment.transform) else {
-            throw PipelineError.renderFailed
-        }
+        let tile = try renderer.render(image, using: alignment.transform)
 
         let destination = output.directory.appendingPathComponent("\(name).\(output.format.fileExtension)")
         try ImageWriting.write(tile, to: destination, format: output.format)
@@ -122,9 +122,4 @@ struct Pipeline: Sendable {
 
         return destination.path
     }
-}
-
-enum PipelineError: Error, CustomStringConvertible {
-    case renderFailed
-    var description: String { "the canvas context could not be created" }
 }

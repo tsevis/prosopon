@@ -335,8 +335,10 @@ Built and tested (**39 tests green**, `swift test`):
 - `ProsoponCore` — geometry, the two-stage solver, coverage, quality gates. No UI, no I/O,
   no Core Graphics; the maths is testable in isolation and is exercised by a randomised
   sweep asserting the eyes never move.
-- `ProsoponIO` — ImageIO loading with EXIF orientation baked in, linear-light rendering,
-  16-bit output, the verification overlay.
+- `ProsoponIO` — ImageIO loading with EXIF orientation baked in, 16-bit output, the
+  verification overlay.
+- `ProsoponRender` — Metal Lanczos-3 in linear light, a CPU reference implementation, and
+  the Core Graphics renderer they are measured against.
 - `ProsoponVision` — Apple Vision landmarks, canthi and commissures recovered as the
   farthest-apart pair in each contour.
 - `ProsoponPSD` — a hand-written layered `.psd`/`.psb` encoder, streamed so a
@@ -358,12 +360,11 @@ and staying flat rather than growing with the layer count.
 
 ### Next, in order
 
-1. **Metal Lanczos-3 renderer** — replaces Core Graphics `.high`, checked against it.
-2. **Contact sheet and mean-face QA** — the mean of an aligned stack should be sharp at
+1. **Contact sheet and mean-face QA** — the mean of an aligned stack should be sharp at
    the eyes and mouth and blurred everywhere else; that one image validates a whole batch.
-3. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
+2. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
    draggable landmarks and a live re-solve for the handful the detector gets wrong.
-4. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
+3. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
    provider, plus yaw gating.
 
 ### One empirical note

@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import ProsoponCore
+import ProsoponRender
 import ProsoponVision
 
 /// Measures the corpus against the fixed canvas without writing anything.
@@ -33,6 +34,7 @@ struct Calibrate: AsyncParsableCommand {
                 usesPupils: shared.usePupils,
                 minimumConfidence: shared.minConfidence
             ),
+            renderer: CoreGraphicsRenderer(spec: .standard),   // never used: output is nil
             output: nil
         )
 
