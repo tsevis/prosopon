@@ -122,5 +122,5 @@ The new surface, and it should follow what Apple's own apps do:
   shape the reader expects, and a `try?` that swallows a decode error will hide a dead
   feature for weeks.
 
-Start by reading the code and proposing a plan for the toolbar and the Import stage before
-building either.
+Start by reading the code and proposing a plan for the pipeline lift, the toolbar and the
+Import stage before building any of them.
