@@ -339,7 +339,10 @@ Built and tested (**39 tests green**, `swift test`):
   16-bit output, the verification overlay.
 - `ProsoponVision` — Apple Vision landmarks, canthi and commissures recovered as the
   farthest-apart pair in each contour.
-- `prosopon align` and `prosopon calibrate`, with a JSON manifest and a sortable CSV.
+- `ProsoponPSD` — a hand-written layered `.psd`/`.psb` encoder, streamed so a
+  multi-gigabyte document never has to fit in memory.
+- `prosopon align`, `prosopon calibrate` and `prosopon stack`, with a JSON manifest and
+  a sortable CSV.
 
 Verified on a real portrait: coverage 100 %, mouth error **0.00 px**, stretch −3.39 %,
 and the overlay's discs sit on the eyes and mouth exactly as in the reference images.
@@ -348,15 +351,19 @@ The renderer is additionally checked at the pixel level against a synthetic sour
 known landmark colours, which is what catches a missing y-flip or a mirrored axis —
 failures that a purely mathematical test cannot see.
 
+The stack writer is validated against `psd-tools`: every layer and the merged composite
+decode pixel-identical to their source tiles, in both bit depths and both containers.
+Measured at 120 layers in 18 s producing 1.3 GB, with resident memory settling near 1 GB
+and staying flat rather than growing with the layer count.
+
 ### Next, in order
 
-1. **PSB stack writer** — the deliverable that makes this usable in Photoshop.
-2. **Metal Lanczos-3 renderer** — replaces Core Graphics `.high`, checked against it.
-3. **Contact sheet and mean-face QA** — the mean of an aligned stack should be sharp at
+1. **Metal Lanczos-3 renderer** — replaces Core Graphics `.high`, checked against it.
+2. **Contact sheet and mean-face QA** — the mean of an aligned stack should be sharp at
    the eyes and mouth and blurred everywhere else; that one image validates a whole batch.
-4. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
+3. **SwiftUI review app** — the overlay grid over every tile, sorted by score, with
    draggable landmarks and a live re-solve for the handful the detector gets wrong.
-5. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
+4. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
    provider, plus yaw gating.
 
 ### One empirical note
