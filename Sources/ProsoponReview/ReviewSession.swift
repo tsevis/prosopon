@@ -114,8 +114,9 @@ public final class ReviewSession {
     /// every decode failed, and the ordering this feeds simply never worked. A missing
     /// file is still fine; a malformed one is now worth saying out loud.
     private func mergeQAReport() {
-        let url = directory.appendingPathComponent("qa.json")
-        guard let data = try? Data(contentsOf: url) else { return }
+        guard let url = Self.locateQAReport(near: directory),
+              let data = try? Data(contentsOf: url)
+        else { return }
 
         let report: StackQA
         do {
@@ -136,6 +137,21 @@ public final class ReviewSession {
             entries[index].consensusMatched = tile.lowestCorrelation >= StackQA.matchFloor
         }
         loadedQAReport = true
+    }
+
+    /// Where a QA report might sit relative to the run it describes.
+    ///
+    /// `prosopon qa` takes its own output directory, so the report is usually *not*
+    /// beside the manifest. Looking only there meant the consensus ordering never
+    /// engaged for anyone who followed the documented commands.
+    static func locateQAReport(near directory: URL) -> URL? {
+        let candidates = [
+            directory.appendingPathComponent("qa.json"),
+            directory.appendingPathComponent("qa").appendingPathComponent("qa.json"),
+            directory.deletingLastPathComponent()
+                .appendingPathComponent("qa").appendingPathComponent("qa.json"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     // MARK: Ordering and selection

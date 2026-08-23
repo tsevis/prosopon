@@ -219,8 +219,10 @@ displacement, because the number would be meaningless and the fix is different.
 ## Reviewing corrections
 
 `prosopon-review` opens a folder written by `align` — it reads `manifest.json` from that
-run, and `qa.json` too when one is there, so the queue can be ordered by distance from
-the stack consensus. Worst first, because finding the few bad tiles is the whole point;
+run, and a `qa.json` when it can find one, so the queue can be ordered by distance from
+the stack consensus. It looks beside the manifest, in a `qa/` folder under the run, and
+in a `qa/` folder beside it; `prosopon qa <run> -o <run>/qa` puts it somewhere it will
+certainly be found. Worst first, because finding the few bad tiles is the whole point;
 nobody should page through three hundred good ones.
 
 Dragging a marker means **"the feature you are aiming at is actually here."** The point

@@ -272,3 +272,69 @@ struct ReviewSessionTests {
         #expect(session.editCount == 0)
     }
 }
+
+@MainActor
+@Suite("QA report discovery")
+struct QALocationTests {
+
+    private func makeRun(qaAt subpath: String?) throws -> URL {
+        let directory = try Fixture.makeRun(names: ["a"])
+        guard let subpath else { return directory }
+        let url = directory.appendingPathComponent(subpath)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let report = StackQA(
+            tileCount: 1, canvasSize: Fixture.canvas, landmarkSharpness: [:],
+            globalSharpness: SharpnessRetention(meanImageAcutance: 1, averageTileAcutance: 1, retention: 1),
+            tiles: [TileQA(name: "a", path: "/tmp/a.png", offsets: [
+                .viewerLeftEye: ConsensusOffset(dx: 4, dy: 3, correlation: 0.95, clipped: false),
+            ])]
+        )
+        try JSONEncoder().encode(report).write(to: url)
+        return directory
+    }
+
+    @Test("the report is found beside the manifest, under it, or beside the run",
+          arguments: ["qa.json", "qa/qa.json"])
+    func findsTheReport(subpath: String) throws {
+        // `prosopon qa` writes to its own output directory, so the report is usually
+        // not where the manifest is; only looking there left the feature unreachable.
+        let directory = try makeRun(qaAt: subpath)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        #expect(session.loadedQAReport, "no report found for \(subpath)")
+        #expect(session.entries[0].consensusDisplacement.map { abs($0 - 5) < 1e-9 } == true)
+    }
+
+    @Test("a sibling qa directory is found too")
+    func findsSiblingReport() throws {
+        let run = try Fixture.makeRun(names: ["a"])
+        defer { try? FileManager.default.removeItem(at: run) }
+        let sibling = run.deletingLastPathComponent().appendingPathComponent("qa")
+        try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sibling) }
+
+        let report = StackQA(
+            tileCount: 1, canvasSize: Fixture.canvas, landmarkSharpness: [:],
+            globalSharpness: SharpnessRetention(meanImageAcutance: 1, averageTileAcutance: 1, retention: 1),
+            tiles: [TileQA(name: "a", path: "/tmp/a.png", offsets: [
+                .mouth: ConsensusOffset(dx: 0, dy: 8, correlation: 0.9, clipped: false),
+            ])]
+        )
+        try JSONEncoder().encode(report).write(to: sibling.appendingPathComponent("qa.json"))
+
+        let session = try ReviewSession(directory: run)
+        #expect(session.loadedQAReport)
+    }
+
+    @Test("no report anywhere is still fine")
+    func noReport() throws {
+        let directory = try makeRun(qaAt: nil)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try ReviewSession(directory: directory)
+        #expect(!session.loadedQAReport)
+        #expect(session.qaReportProblem == nil)
+    }
+}
