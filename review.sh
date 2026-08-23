@@ -63,6 +63,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleIconFile</key><string>Prosopon</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
@@ -70,6 +71,29 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 cp -f "$BIN" "$APP/Contents/MacOS/prosopon-review"
+
+# The artwork is a SwiftPM resource bundle sitting beside the built binary, and
+# `Bundle.module` looks for it in the app's Contents/Resources. Copying only the
+# executable leaves the info panel rendering a bare gradient with no error anywhere --
+# the same silent failure the code comments in Brand.swift are about, one level up.
+mkdir -p "$APP/Contents/Resources"
+RESOURCE_BUNDLE="$REPO/.build/release/Prosopon_ProsoponReview.bundle"
+[[ -d "$RESOURCE_BUNDLE" ]] || {
+    echo "error: $RESOURCE_BUNDLE is missing. Did the build finish?" >&2
+    exit 1
+}
+rm -rf "$APP/Contents/Resources/Prosopon_ProsoponReview.bundle"
+cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
+cp -f "$REPO/Resources/Prosopon.icns" "$APP/Contents/Resources/Prosopon.icns"
+
+# Say so here rather than discovering it in the running app.
+for required in \
+    "Contents/Resources/Prosopon.icns" \
+    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AboutBanner.jpg" \
+    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AppMark.png"
+do
+    [[ -e "$APP/$required" ]] || { echo "error: the bundle is missing $required" >&2; exit 1; }
+done
 
 # Let LaunchServices see the finished bundle before opening it. Registering a bundle
 # whose Info.plist was still being written leaves it launchable but window-less: the

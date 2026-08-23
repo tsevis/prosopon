@@ -31,7 +31,11 @@ let package = Package(
             name: "ProsoponPipeline",
             dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponVision"]
         ),
-        .target(name: "ProsoponReview", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponQA"]),
+        .target(
+            name: "ProsoponReview",
+            dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponQA", "ProsoponPipeline"],
+            resources: [.copy("Resources")]
+        ),
         .executableTarget(name: "ProsoponReviewApp", dependencies: ["ProsoponReview"]),
         .executableTarget(
             name: "ProsoponCLI",
