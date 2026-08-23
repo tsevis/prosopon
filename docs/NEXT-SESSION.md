@@ -59,7 +59,34 @@ The three stages, left to right:
 3. **Fine Tune** — the review surface that already exists: the queue, the draggable
    landmarks, the live re-solve, save.
 
-**Import portraits** is the new work and should follow what Apple's own apps do:
+#### First: lift the pipeline out of the CLI
+
+Import and Analyze can only be real stages if the app can *run* alignment, and today only
+`ProsoponCLI` can. Three files in `Sources/ProsoponCLI/` are pipeline rather than
+presentation and belong in a target both the CLI and the app can depend on — say
+`ProsoponPipeline`:
+
+- `Pipeline.swift` (129 lines) — load, detect, solve, gate, render for one photograph,
+  plus `OutputPlan`
+- `BatchRunner.swift` (48 lines) — bounded-concurrency fan-out with progress
+- `FaceSelection.swift` (27 lines) — all / largest / central
+
+What stays behind is genuinely CLI: `AlignCommand`, `CalibrateCommand`, `QACommand`,
+`StackCommand`, `Summary`, `CSVReport`, `AlignOptions`, `Diagnostics`.
+
+Two things to watch while moving them. `FaceSelection` conforms to
+`ExpressibleByArgument`, which is ArgumentParser's and must not follow it into a library
+the app links — leave that conformance in the CLI as an extension. And `BatchRunner`
+reports progress by writing a bar to stderr; the app needs the same numbers as values,
+so give it a progress callback and let the CLI do its own drawing. There are no tests
+over these three files today, which is its own argument for moving them somewhere
+testable.
+
+Do this before the UI work: it decides what the Analyze stage can actually call.
+
+#### Then: Import portraits
+
+The new surface, and it should follow what Apple's own apps do:
 
 - Add **folders and individual files** in one panel — `NSOpenPanel` with
   `canChooseDirectories` and `canChooseFiles` both true, and multiple selection.
