@@ -61,10 +61,7 @@ struct Align: AsyncParsableCommand {
                 maxMagnification: maxMagnification
             ),
             selection: shared.faces,
-            detector: VisionLandmarkDetector(
-                usesPupils: shared.usePupils,
-                minimumConfidence: shared.minConfidence
-            ),
+            detector: try shared.makeDetector(),
             renderer: renderer,
             output: dryRun ? nil : OutputPlan(
                 directory: outputDirectory,
@@ -96,7 +93,7 @@ struct Align: AsyncParsableCommand {
             ],
             maxStretch: shared.maxStretch,
             maxShear: shared.noShear ? 0 : shared.maxShear,
-            detector: "vision",
+            detector: shared.detector.rawValue,
             resampler: resampler.rawValue,
             tiles: tiles
         )

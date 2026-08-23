@@ -345,6 +345,8 @@ Built and tested (**39 tests green**, `swift test`):
   multi-gigabyte document never has to fit in memory.
 - `ProsoponQA` — streaming mean and deviation over a stack, plus per-tile registration
   against the stack's own consensus.
+- `ProsoponInsight` — InsightFace `det_10g` + `2d106det` through ONNX Runtime with the
+  CoreML provider, checked against the reference Python implementation.
 - `ProsoponReview` — the review session, live preview rendering, and the correction
   writer, with the SwiftUI views on top of them.
 - `prosopon align`, `prosopon calibrate`, `prosopon stack` and `prosopon qa`, with a JSON
@@ -364,8 +366,11 @@ and staying flat rather than growing with the layer count.
 
 ### Next, in order
 
-1. **InsightFace accuracy tier** — `det_10g` + `2d106det` over ONNX Runtime's CoreML
-   provider, plus yaw gating.
+1. **Yaw gating.** A turned head foreshortens the interocular distance, so the similarity
+   step over-scales the whole face and no 2D affine can undo it. Both detectors produced
+   wild mouth-drop ratios (1.7 and 1.9) on the one strongly non-frontal face available.
+   `1k3d68` is on disk and reports pose; the gate is a small piece of work on top.
+2. **Deciding which detector is actually better**, which needs real portraits.
 
 ### A caveat on the "real portrait" check
 

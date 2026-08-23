@@ -20,7 +20,7 @@ struct Pipeline: Sendable {
     var solveOptions: SolveOptions
     var thresholds: QualityThresholds
     var selection: FaceSelection
-    var detector: VisionLandmarkDetector
+    var detector: any LandmarkDetector
     var renderer: any TileRenderer
     var output: OutputPlan?
 

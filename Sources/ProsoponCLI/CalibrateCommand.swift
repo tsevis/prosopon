@@ -30,10 +30,7 @@ struct Calibrate: AsyncParsableCommand {
             solveOptions: shared.solveOptions,
             thresholds: QualityThresholds(requiresFullCoverage: true, maxMagnification: .infinity),
             selection: shared.faces,
-            detector: VisionLandmarkDetector(
-                usesPupils: shared.usePupils,
-                minimumConfidence: shared.minConfidence
-            ),
+            detector: try shared.makeDetector(),
             renderer: CoreGraphicsRenderer(spec: .standard),   // never used: output is nil
             output: nil
         )

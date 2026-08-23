@@ -1,5 +1,7 @@
 import ArgumentParser
+import ProsoponInsight
 import ProsoponRender
+import ProsoponVision
 import Foundation
 import ProsoponCore
 import ProsoponIO
@@ -29,6 +31,25 @@ struct SharedOptions: ParsableArguments {
 
     @Option(name: .long, help: "Concurrent images. Defaults to the core count.")
     var jobs: Int?
+
+    @Option(name: .long, help: "Landmark source: vision (no model files) or insightface.")
+    var detector: DetectorChoice = .vision
+
+    @Option(name: .long, help: "Directory holding det_10g.onnx and 2d106det.onnx.")
+    var modelPath: String?
+
+    /// Built once and shared: loading two ONNX models is a per-process cost.
+    func makeDetector() throws -> any LandmarkDetector {
+        switch detector {
+        case .vision:
+            VisionLandmarkDetector(usesPupils: usePupils, minimumConfidence: minConfidence)
+        case .insightface:
+            try InsightFaceLandmarkDetector(
+                bundle: modelPath.map { try ModelBundle.locate(explicit: $0) },
+                minimumConfidence: minConfidence
+            )
+        }
+    }
 
     var solveOptions: SolveOptions {
         SolveOptions(
@@ -65,3 +86,9 @@ struct SharedOptions: ParsableArguments {
 }
 
 extension Resampler: ExpressibleByArgument {}
+
+
+enum DetectorChoice: String, CaseIterable, ExpressibleByArgument {
+    case vision
+    case insightface
+}

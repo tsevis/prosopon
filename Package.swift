@@ -11,12 +11,20 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager", from: "1.19.2"),
     ],
     targets: [
         .target(name: "ProsoponCore"),
         .target(name: "ProsoponIO", dependencies: ["ProsoponCore"]),
         .target(name: "ProsoponRender", dependencies: ["ProsoponCore"]),
         .target(name: "ProsoponVision", dependencies: ["ProsoponCore", "ProsoponIO"]),
+        .target(
+            name: "ProsoponInsight",
+            dependencies: [
+                "ProsoponCore", "ProsoponIO", "ProsoponVision",
+                .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager"),
+            ]
+        ),
         .target(name: "ProsoponPSD", dependencies: ["ProsoponIO"]),
         .target(name: "ProsoponQA", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .target(name: "ProsoponReview", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponQA"]),
@@ -24,15 +32,15 @@ let package = Package(
         .executableTarget(
             name: "ProsoponCLI",
             dependencies: [
-                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD", "ProsoponRender", "ProsoponQA",
+                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD", "ProsoponRender", "ProsoponQA", "ProsoponInsight",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
         .testTarget(name: "ProsoponCoreTests", dependencies: ["ProsoponCore"]),
-        .testTarget(name: "ProsoponIOTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponRenderTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponQATests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponQA"]),
         .testTarget(name: "ProsoponReviewTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponReview"]),
+        .testTarget(name: "ProsoponInsightTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponInsight"]),
         .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]
 )

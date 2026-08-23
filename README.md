@@ -60,7 +60,9 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--max-shear` | `0.05` | horizontal drift per unit of vertical drop |
 | `--no-shear` | off | leave the mouth's horizontal offset uncorrected |
 | `--faces` | `all` | `all`, `largest` or `central` |
-| `--use-pupils` | off | eye centre from the pupil instead of the canthus midpoint |
+| `--use-pupils` | off | eye centre from the pupil instead of the canthus midpoint (Vision only) |
+| `--detector` | `vision` | `vision` or `insightface` |
+| `--model-path` | searched | directory holding `det_10g.onnx` and `2d106det.onnx` |
 | `--allow-partial-coverage` | off | keep tiles that do not fill the canvas |
 | `--max-magnification` | `2.0` | reject tiles enlarged beyond this |
 | `--dry-run` | off | analyse and report, write no images |
@@ -106,6 +108,40 @@ Because the stretch is vertical-only, the aspect change *is* the stretch factor,
 5 % rule reads directly off the transform. Splitting the distortion across both axes
 would halve the per-axis error, but any horizontal scale about `x = 1024` moves the eyes
 off 512 and 1536.
+
+## Detectors
+
+**Vision** is the default: no model files, nothing to install, runs on the Neural Engine.
+
+**InsightFace** (`--detector insightface`) runs `det_10g` + `2d106det` from `buffalo_l`
+through ONNX Runtime with the CoreML execution provider — no Python at runtime. It is
+searched for in `~/.insightface/models/buffalo_l` and a couple of other usual places, or
+pointed at with `--model-path`. Its 106-point contour gives the canthi and the mouth
+commissures directly, rather than leaving them to be inferred from a coarser
+constellation.
+
+The six indices it reads — 35/39 and 93/89 for the canthi, 52/61 for the commissures —
+were established by running the reference implementation over a set of faces and keeping
+the ones that did not move, not taken from memory. `scripts/insightface_truth.py`
+regenerates the fixture that pins them.
+
+The Swift port is checked against that reference: same faces found, box corners agreeing
+to **0.16 px** on a 1280 px image, and all 106 landmarks to **0.004** of an interocular
+distance.
+
+One measured surprise: using *better* resampling for the model's input crop makes it
+worse. Core Graphics `.high` moves the median canonical landmark from 3.9 to 6.3 canvas
+pixels away from the reference. The model was trained behind OpenCV's bilinear, and
+matching that is the accurate choice, not the higher-quality filter.
+
+### Which one is better?
+
+Not established. The port is faithful to its reference, and on a six-face group photo
+both detectors find all six. But they place the landmarks differently — InsightFace's
+mouth-drop ratios run consistently lower, which is a definitional difference rather than
+an error — and deciding which is *closer to the truth* needs a corpus of real portraits
+that this machine does not have. InsightFace also found nothing at all in a photograph
+that had markers painted over the eyes, where Vision coped.
 
 ## Checking a batch
 
@@ -201,6 +237,7 @@ is really registering is error.
 | `ProsoponIO` | ImageIO loading with EXIF baked in, linear-light rendering, overlays |
 | `ProsoponRender` | Metal Lanczos-3, a CPU reference, and the Core Graphics fallback |
 | `ProsoponVision` | Apple Vision landmarks |
+| `ProsoponInsight` | InsightFace `buffalo_l` through ONNX Runtime and CoreML |
 | `ProsoponPSD` | layered `.psd` / `.psb` writer |
 | `ProsoponCLI` | `align`, `calibrate`, `stack` |
 
