@@ -330,7 +330,7 @@ milestone rather than a flag on the existing writer.
 
 ## 11. Status
 
-Built and tested (**39 tests green**, `swift test`):
+Built and tested (**250 tests green**, `swift test`, about five minutes):
 
 - `ProsoponCore` — geometry, the two-stage solver, coverage, quality gates. No UI, no I/O,
   no Core Graphics; the maths is testable in isolation and is exercised by a randomised
@@ -347,8 +347,11 @@ Built and tested (**39 tests green**, `swift test`):
   against the stack's own consensus.
 - `ProsoponInsight` — InsightFace `det_10g` + `2d106det` through ONNX Runtime with the
   CoreML provider, checked against the reference Python implementation.
-- `ProsoponReview` — the review session, live preview rendering, and the correction
-  writer, with the SwiftUI views on top of them.
+- `ProsoponPipeline` — load, detect, solve, gate, render for one photograph; the bounded
+  fan-out over many; source scanning; and what a run writes. Shared by the command line
+  and the app.
+- `ProsoponReview` — the three stages, the import sources, the review session, live
+  preview rendering, and the correction writer, with the SwiftUI views on top of them.
 - `prosopon align`, `prosopon calibrate`, `prosopon stack` and `prosopon qa`, with a JSON
   manifest and sortable CSVs, plus the `prosopon-review` app.
 
@@ -364,7 +367,83 @@ decode pixel-identical to their source tiles, in both bit depths and both contai
 Measured at 120 layers in 18 s producing 1.3 GB, with resident memory settling near 1 GB
 and staying flat rather than growing with the layer count.
 
-### Next
+---
+
+## 12. The app
+
+Reads left to right as the work — **Import**, **Analyze**, **Fine Tune** — with a count on
+each stage, a chip naming what is loaded and how far along it is, actions right-aligned
+with exactly one filled control, and one line of plain language under the toolbar. The
+interaction model is borrowed from CrewListr Pro on this machine
+(`crewlisterpromac/Sources/CrewListrProMac/UI/AppChrome.swift`), not the code.
+
+### Every string is a value
+
+`ChromeState` is a flat struct, and `Stage.badge`, `SubjectChip`, `CommandSet` and
+`StatusBanner` are functions of it. What the toolbar says, which control is filled, which
+are dimmed and what the banner reads are therefore checked by building a value and
+reading the answer — no window, no session, no folder on disk. The SwiftUI files are left
+holding arrangement.
+
+That is what pays for the standing rule about not launching the app: the parts that can be
+silently wrong are not in the view layer.
+
+Two orderings that took a decision:
+
+- **Fine Tune's badge counts tiles that need attention, not the queue.** Three hundred
+  good tiles is not a number anybody tracks.
+- **Unsaved corrections outrank a queue that needs attention.** Both are true at once and
+  there is one line; work that closing the window would lose comes first.
+
+### The palette is measured
+
+`#E80F9E` is the grid ink in `documents/assets/Splash.jpg`, sampled off the lines. Every
+value in `Theme` is that hue at a different lightness.
+
+White on it is **4.21:1**, under the 4.5 floor, and a filled button's label is 12pt
+semibold rather than large text — so the fill is four steps darker at 4.55:1 and the
+undiluted pink is kept for the icon and the active rule, where nothing is carrying type.
+Accent text clears 6.46:1 on white and 5.72:1 on the dark panel; both banner inks clear
+7:1 on their own ground.
+
+The banner's two states are one hue apart by saturation rather than by colour, and the
+cost is real: green-means-fine is a convention read without thinking and pink-means-fine
+is not, so the glyph and the wording carry what colour used to.
+
+The canvas behind a photograph deliberately does not follow the appearance. A tile is
+judged against its neighbours and a white surround changes what the eye makes of its
+shadows.
+
+### Import
+
+Folders and files in one panel with multiple selection, the same mixture by drag, and a
+`Look Inside Folders` switch per folder — a corpus is usually one deep tree beside a
+handful of strays, and a single global setting would be wrong for one of the two.
+
+Sources persist as security-scoped bookmarks. The app is not sandboxed today and a plain
+path would work; this is written for the day it is, because without one a sandboxed build
+would open showing the same four folders and find every one of them empty — a failure with
+no error attached to it, which is the kind this project keeps meeting.
+
+A bookmark that will not resolve is **kept and named**, never dropped. So is a decode
+failure of the whole list: a `try?` there would empty the source list with no error
+anywhere, which is the exact shape of the `qa.json` bug that hid a dead feature for weeks.
+
+### Two failures that look like nothing
+
+Both worth remembering because neither produces an error.
+
+- **A resource loaded by asset name comes back empty.** Nino recorded it: the splash
+  rendered as a bare gradient and every layout assertion still passed, because a missing
+  image is a valid `Image`. Artwork is loaded by URL and `BrandTests` fails when it is nil.
+- **The `.app` bundle can be assembled without it.** `Bundle.module` looks in
+  `Contents/Resources`, and `review.sh` used to copy only the executable. It now copies the
+  resource bundle and the icon, and checks all three files landed rather than letting the
+  running app discover it.
+
+---
+
+## 13. Next
 
 **Deciding which detector to trust, and how much of a corpus survives the gates.** Both
 need real portraits, and one run answers them:
@@ -374,6 +453,15 @@ prosopon calibrate ~/portraits --detector insightface
 ```
 
 Everything else that remains is speculative until that number exists.
+
+Two smaller things the GUI work turned up:
+
+- **`RunManifest` does not record the thresholds a run was aligned with.** A run made with
+  `--max-yaw 15 --max-magnification 1.2` re-solves in the app against the defaults and will
+  not reproduce its own rejections. The field belongs in the manifest.
+- **The Analyze stage writes 8-bit PNG and does not offer the choice.** Right for
+  8-bit sources, which is everything measured so far, and wrong the first time somebody
+  imports raw.
 
 ### Yaw
 
@@ -385,6 +473,10 @@ Only the InsightFace detector can drive it. Vision quantises yaw to 45 degree st
 reported 0 for faces turned 13, 20 and 37, so `--max-yaw` warns when paired with it. This
 is the one respect in which the InsightFace tier is *demonstrably* better rather than
 merely faithful to its reference.
+
+The review app now carries the detector's yaw through from the manifest rather than
+re-solving without it — and, because Vision's zero is a quantisation rather than a
+measurement, a Vision run says so beside the figure instead of asserting a frontal face.
 
 ### A caveat on the "real portrait" check
 

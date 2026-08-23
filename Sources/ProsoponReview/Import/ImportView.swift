@@ -16,6 +16,7 @@ struct ImportView: View {
     let onAdd: () -> Void
 
     @State private var quickLookURL: URL?
+    @State private var selected: URL?
 
     private var library: SourceLibrary { state.sources }
 
@@ -102,13 +103,28 @@ struct ImportView: View {
                             Thumbnail(
                                 url: url,
                                 isAligned: alignedPaths.contains(url.standardizedFileURL.path),
+                                isSelected: selected == url,
                                 thumbnails: thumbnails
                             )
-                            .onTapGesture { quickLookURL = url }
+                            .onTapGesture { selected = url }
+                            .onTapGesture(count: 2) { quickLookURL = url }
                         }
                     }
                     .padding(12)
                 }
+                // Space previews the selection, the way it does in Finder. The panel
+                // takes the whole list, so its own arrow keys then walk the corpus.
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.space) {
+                    guard let url = selected ?? library.scan.imageURLs.first else {
+                        return .ignored
+                    }
+                    quickLookURL = url
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) { move(by: -1) }
+                .onKeyPress(.rightArrow) { move(by: 1) }
             }
         }
         .background(Theme.panel)
@@ -117,6 +133,16 @@ struct ImportView: View {
             RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 1)
         )
+    }
+
+    /// Walks the grid so a corpus can be looked through from the keyboard without
+    /// opening Quick Look at all.
+    private func move(by delta: Int) -> KeyPress.Result {
+        let urls = library.scan.imageURLs
+        guard !urls.isEmpty else { return .ignored }
+        let current = selected.flatMap { urls.firstIndex(of: $0) } ?? 0
+        selected = urls[min(max(current + delta, 0), urls.count - 1)]
+        return .handled
     }
 
     private var gridDetail: String {
@@ -231,6 +257,7 @@ private struct MissingSourceRow: View {
 private struct Thumbnail: View {
     let url: URL
     let isAligned: Bool
+    let isSelected: Bool
     let thumbnails: ThumbnailCache
 
     @State private var image: CGImage?
@@ -255,14 +282,19 @@ private struct Thumbnail: View {
                         .padding(4)
                 }
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.thumbnail)
+                    .strokeBorder(isSelected ? Theme.accent : .clear, lineWidth: 2)
+            )
             Text(url.deletingPathExtension().lastPathComponent)
                 .font(Theme.Font.meta)
                 .foregroundStyle(Theme.inkSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
-        .help(isAligned ? "\(url.lastPathComponent) \u{2014} already aligned in this run"
-                        : url.lastPathComponent)
+        .help(isAligned
+            ? "\(url.lastPathComponent) \u{2014} already aligned in this run. Space to look at it."
+            : "\(url.lastPathComponent) \u{2014} space to look at it.")
         .task(id: url) { image = await thumbnails.thumbnail(for: url)?.image }
     }
 }

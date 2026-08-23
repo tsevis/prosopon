@@ -30,16 +30,18 @@ Align and write tiles, with verification overlays:
 .build/release/prosopon align ~/Pictures/portraits -o ~/aligned --overlay
 ```
 
-Fix the handful the detector got wrong:
+Or do the whole thing in the app — import, analyse, and fix the handful the detector got
+wrong:
 
 ```bash
-./review.sh ~/aligned
+./review.sh
 ```
 
-`review.sh` builds the binary if it is stale, wraps it in a `.app` bundle and opens
-that. The bundle is not optional: a bare SwiftPM executable has no `Info.plist`, and
-without one the app runs its event loop happily while never putting a window on screen.
-Called with no argument it opens the most recent run it can find.
+`review.sh` builds the binary if it is stale, wraps it in a `.app` bundle and opens that.
+The bundle is not optional: a bare SwiftPM executable has no `Info.plist`, and without one
+the app runs its event loop happily while never putting a window on screen. Given a run
+directory it opens straight into Fine Tune on it; with no argument it finds the most recent
+run, and with none to find it starts at Import.
 
 Check that the batch registered, before committing to it:
 
@@ -220,14 +222,31 @@ Tiles that cannot be matched at all — a mirrored face, an unusual pose, a dete
 landed on the wrong feature — are reported **separately** rather than as a large
 displacement, because the number would be meaningless and the fix is different.
 
-## Reviewing corrections
+## The app
 
-`prosopon-review` opens a folder written by `align` — it reads `manifest.json` from that
-run, and a `qa.json` when it can find one, so the queue can be ordered by distance from
-the stack consensus. It looks beside the manifest, in a `qa/` folder under the run, and
-in a `qa/` folder beside it; `prosopon qa <run> -o <run>/qa` puts it somewhere it will
-certainly be found. Worst first, because finding the few bad tiles is the whole point;
-nobody should page through three hundred good ones.
+`prosopon-review` reads left to right as the work: **Import**, **Analyze**, **Fine Tune**.
+It can start from an empty window or from a run `align` already wrote.
+
+**Import.** One panel takes folders and individual photographs together, with multiple
+selection, and a drag onto the window accepts the same mixture. Each folder carries its
+own *Look Inside Folders* switch, because a corpus is usually one deep tree beside a
+handful of strays and a single setting would be wrong for one of the two. Sources are
+remembered between launches as security-scoped bookmarks; one that will not resolve stays
+in the list saying **missing — moved, renamed, or on a volume that is not mounted**,
+because silently forgetting a folder is how somebody loses a corpus they added months
+ago. Space previews the selected photograph. Before anything runs, the banner says how
+many were found, how many this run has already aligned, and how many are still to do.
+
+**Analyze** runs the same pipeline the CLI does, in process, and hands the result
+straight to Fine Tune. Two settings and no more — which detector, and where the tiles go.
+
+**Fine Tune** is the review queue: it reads `manifest.json` from the run, and a `qa.json`
+when it can find one, so the queue can be ordered by distance from the stack consensus.
+It looks beside the manifest, in a `qa/` folder under the run, and in a `qa/` folder
+beside it; `prosopon qa <run> -o <run>/qa` puts it somewhere it will certainly be found.
+Worst first, because finding the few bad tiles is the whole point; nobody should page
+through three hundred good ones. A tile that failed a gate was never written, and the row
+says which gate rather than showing an empty square.
 
 Dragging a marker means **"the feature you are aiming at is actually here."** The point
 travels back through the transform to become the corrected source landmark, and on
@@ -251,7 +270,8 @@ for the next stack run to swallow.
 | ↑ / ↓ | previous / next tile |
 | ⌘Z | revert the selected tile |
 | ⌘S | save corrections |
-| ⌘O | open another run |
+| ⌘I | add portraits |
+| space | look at the selected photograph, in Import |
 
 ## Resampling
 
@@ -288,7 +308,10 @@ is really registering is error.
 | `ProsoponVision` | Apple Vision landmarks |
 | `ProsoponInsight` | InsightFace `buffalo_l` through ONNX Runtime and CoreML |
 | `ProsoponPSD` | layered `.psd` / `.psb` writer |
-| `ProsoponCLI` | `align`, `calibrate`, `stack` |
+| `ProsoponQA` | streaming mean and deviation, per-tile registration against consensus |
+| `ProsoponPipeline` | load → detect → solve → gate → render, the batch fan-out, and what a run writes. Shared by the CLI and the app, so a run folder is the same folder whichever made it |
+| `ProsoponReview` | the app: stages, import sources, the review session, the correction writer |
+| `ProsoponCLI` | `align`, `calibrate`, `qa`, `stack` |
 
 See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is next.
 
@@ -298,11 +321,19 @@ See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is ne
 swift test
 ```
 
-Covers the transform algebra, the solver invariants (including a randomised sweep
+250 tests, about five minutes. Covers the transform algebra, the solver invariants (including a randomised sweep
 asserting the eyes never move), polygon clipping for coverage, a pixel-level check that
 landmarks land on their targets in the rendered output without mirroring or flipping,
 PackBits round-trips, and a structural reader that walks every declared section length
 in a written document and checks it lands where the content actually ends.
+
+The app is covered without opening a window. Every string in the toolbar and every dimmed
+control is a function of one flat value, so the wording, the enablement and the ordering
+are checked by building that value and reading the answer — including that exactly one
+control is filled on every stage in every state, and that a source which cannot be read
+interrupts whatever else the stage was saying. Source scanning and the bookmarks that
+remember it are checked against real folders and real bookmarks in a throwaway defaults
+suite, since a folder is what the code reads and only the system can make a bookmark.
 
 The geometry suite runs against all three renderers, so a coordinate bug in one shows up
 as a disagreement with the other two. Resampling is pinned by an identity transform

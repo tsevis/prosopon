@@ -6,7 +6,8 @@
 #   ./review.sh ~/aligned           a specific run
 #
 # The argument is the directory `prosopon align -o` wrote to: the one holding
-# manifest.json.
+# manifest.json. With no argument and no run to find, the app opens at Import,
+# where portraits can be added and analysed without the command line at all.
 #
 # A bare SwiftPM executable has no Info.plist, and without one AppKit will run its
 # event loop quite happily while never putting a window on screen. So this wraps the
@@ -33,13 +34,17 @@ if [[ -z "$RUN" ]]; then
            | sort -rn | head -1 | cut -d' ' -f2- || true)"
     [[ -n "$RUN" ]] && echo "No run given; using the most recent: $RUN"
 fi
-[[ -z "$RUN" ]] && { echo "error: no aligned run found. Run 'prosopon align' first." >&2; exit 1; }
-RUN="${RUN/#\~/$HOME}"
-RUN="$(cd "$RUN" 2>/dev/null && pwd)" || { echo "error: no such directory: $1" >&2; exit 1; }
-[[ -f "$RUN/manifest.json" ]] || {
-    echo "error: $RUN has no manifest.json — that is what 'prosopon align -o' writes." >&2
-    exit 1
-}
+# No run is not an error any more: the app can import and analyse on its own, so
+# starting it empty is a perfectly good thing to do. A run that was *named* and is
+# not one still is.
+if [[ -n "$RUN" ]]; then
+    RUN="${RUN/#\~/$HOME}"
+    RUN="$(cd "$RUN" 2>/dev/null && pwd)" || { echo "error: no such directory: $1" >&2; exit 1; }
+    [[ -f "$RUN/manifest.json" ]] || {
+        echo "error: $RUN has no manifest.json — that is what 'prosopon align -o' writes." >&2
+        exit 1
+    }
+fi
 
 # --- build if needed --------------------------------------------------------
 
@@ -104,8 +109,13 @@ touch "$APP"
 
 # --- launch -----------------------------------------------------------------
 
-tiles=$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['tiles']))" \
-        "$RUN/manifest.json" 2>/dev/null || echo "?")
-echo "Opening $tiles tile(s) from $RUN"
-open -a "$APP" --args "$RUN"
+if [[ -n "$RUN" ]]; then
+    tiles=$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['tiles']))" \
+            "$RUN/manifest.json" 2>/dev/null || echo "?")
+    echo "Opening $tiles tile(s) from $RUN"
+    open -a "$APP" --args "$RUN"
+else
+    echo "No aligned run found; opening at Import."
+    open -a "$APP"
+fi
 echo "Launched. The app is at: $APP"
