@@ -27,12 +27,17 @@ let package = Package(
         ),
         .target(name: "ProsoponPSD", dependencies: ["ProsoponIO"]),
         .target(name: "ProsoponQA", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
+        .target(
+            name: "ProsoponPipeline",
+            dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponVision"]
+        ),
         .target(name: "ProsoponReview", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender", "ProsoponQA"]),
         .executableTarget(name: "ProsoponReviewApp", dependencies: ["ProsoponReview"]),
         .executableTarget(
             name: "ProsoponCLI",
             dependencies: [
-                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD", "ProsoponRender", "ProsoponQA", "ProsoponInsight",
+                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD", "ProsoponRender",
+                "ProsoponQA", "ProsoponInsight", "ProsoponPipeline",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
@@ -40,6 +45,7 @@ let package = Package(
         .testTarget(name: "ProsoponRenderTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponRender"]),
         .testTarget(name: "ProsoponQATests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponQA"]),
         .testTarget(name: "ProsoponReviewTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponReview", "ProsoponQA"]),
+        .testTarget(name: "ProsoponPipelineTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponPipeline"]),
         .testTarget(name: "ProsoponInsightTests", dependencies: ["ProsoponCore", "ProsoponIO", "ProsoponInsight"]),
         .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]

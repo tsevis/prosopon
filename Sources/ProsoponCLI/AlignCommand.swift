@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import ProsoponCore
 import ProsoponIO
+import ProsoponPipeline
 import ProsoponRender
 import ProsoponVision
 
@@ -95,8 +96,9 @@ struct Align: AsyncParsableCommand {
         FileHandle.standardError.write(Data("Aligning \(urls.count) image(s)\n".utf8))
         let tiles = await BatchRunner.run(
             urls: urls, pipeline: pipeline,
-            concurrency: shared.concurrency, showsProgress: true
+            concurrency: shared.concurrency, onProgress: ProgressBar.draw
         )
+        ProgressBar.finish()
 
         if !dryRun {
             try writeManifest(tiles, spec: spec, to: outputDirectory)

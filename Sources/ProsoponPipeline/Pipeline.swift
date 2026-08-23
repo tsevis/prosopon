@@ -5,27 +5,55 @@ import ProsoponIO
 import ProsoponRender
 import ProsoponVision
 
-struct OutputPlan: Sendable {
-    var directory: URL
-    var overlayDirectory: URL?
-    var format: ImageFormat
-    var depth: OutputDepth
+public struct OutputPlan: Sendable {
+    public var directory: URL
+    public var overlayDirectory: URL?
+    public var format: ImageFormat
+    public var depth: OutputDepth
+
+    public init(
+        directory: URL, overlayDirectory: URL? = nil,
+        format: ImageFormat = .png, depth: OutputDepth = .sixteen
+    ) {
+        self.directory = directory
+        self.overlayDirectory = overlayDirectory
+        self.format = format
+        self.depth = depth
+    }
 }
 
 /// Load, detect, solve, gate, render — for one photograph.
 ///
 /// Everything here is value types and locals, so a task group can run one instance of
 /// `process` per image with no shared mutable state and no CGImage crossing a task boundary.
-struct Pipeline: Sendable {
-    var spec: CanvasSpec
-    var solveOptions: SolveOptions
-    var thresholds: QualityThresholds
-    var selection: FaceSelection
-    var detector: any LandmarkDetector
-    var renderer: any TileRenderer
-    var output: OutputPlan?
+public struct Pipeline: Sendable {
+    public var spec: CanvasSpec
+    public var solveOptions: SolveOptions
+    public var thresholds: QualityThresholds
+    public var selection: FaceSelection
+    public var detector: any LandmarkDetector
+    public var renderer: any TileRenderer
+    public var output: OutputPlan?
 
-    func process(_ url: URL) -> [TileRecord] {
+    public init(
+        spec: CanvasSpec,
+        solveOptions: SolveOptions,
+        thresholds: QualityThresholds,
+        selection: FaceSelection,
+        detector: any LandmarkDetector,
+        renderer: any TileRenderer,
+        output: OutputPlan?
+    ) {
+        self.spec = spec
+        self.solveOptions = solveOptions
+        self.thresholds = thresholds
+        self.selection = selection
+        self.detector = detector
+        self.renderer = renderer
+        self.output = output
+    }
+
+    public func process(_ url: URL) -> [TileRecord] {
         let image: CGImage
         do {
             image = try ImageLoading.load(url)

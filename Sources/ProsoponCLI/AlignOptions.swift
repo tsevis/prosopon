@@ -1,5 +1,6 @@
 import ArgumentParser
 import ProsoponInsight
+import ProsoponPipeline
 import ProsoponRender
 import ProsoponVision
 import Foundation
@@ -86,6 +87,10 @@ struct SharedOptions: ParsableArguments {
 }
 
 extension Resampler: ExpressibleByArgument {}
+
+/// `FaceSelection` lives in `ProsoponPipeline`, which the review app links too. This
+/// conformance is ArgumentParser's and stays on the command line's side of that line.
+extension FaceSelection: ExpressibleByArgument {}
 
 
 enum DetectorChoice: String, CaseIterable, ExpressibleByArgument {

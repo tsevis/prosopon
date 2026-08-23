@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import ProsoponCore
+import ProsoponPipeline
 import ProsoponRender
 import ProsoponVision
 
@@ -38,8 +39,9 @@ struct Calibrate: AsyncParsableCommand {
         FileHandle.standardError.write(Data("Measuring \(urls.count) image(s)\n".utf8))
         let tiles = await BatchRunner.run(
             urls: urls, pipeline: pipeline,
-            concurrency: shared.concurrency, showsProgress: true
+            concurrency: shared.concurrency, onProgress: ProgressBar.draw
         )
+        ProgressBar.finish()
 
         if let csv {
             let url = URL(fileURLWithPath: (csv as NSString).expandingTildeInPath)
