@@ -15,14 +15,16 @@ let package = Package(
         .target(name: "ProsoponCore"),
         .target(name: "ProsoponIO", dependencies: ["ProsoponCore"]),
         .target(name: "ProsoponVision", dependencies: ["ProsoponCore", "ProsoponIO"]),
+        .target(name: "ProsoponPSD", dependencies: ["ProsoponIO"]),
         .executableTarget(
             name: "ProsoponCLI",
             dependencies: [
-                "ProsoponCore", "ProsoponIO", "ProsoponVision",
+                "ProsoponCore", "ProsoponIO", "ProsoponVision", "ProsoponPSD",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
         .testTarget(name: "ProsoponCoreTests", dependencies: ["ProsoponCore"]),
         .testTarget(name: "ProsoponIOTests", dependencies: ["ProsoponCore", "ProsoponIO"]),
+        .testTarget(name: "ProsoponPSDTests", dependencies: ["ProsoponPSD", "ProsoponIO"]),
     ]
 )

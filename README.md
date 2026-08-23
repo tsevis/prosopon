@@ -30,7 +30,13 @@ Align and write tiles, with verification overlays:
 .build/release/prosopon align ~/Pictures/portraits -o ~/aligned --overlay
 ```
 
-Each run writes `manifest.json` (landmarks, transforms, metrics — enough to re-render at
+Collect the tiles into one layered Photoshop document, first file on top:
+
+```bash
+.build/release/prosopon stack ~/aligned -o ~/faces.psb
+```
+
+Each align run writes `manifest.json` (landmarks, transforms, metrics — enough to re-render at
 any size without re-detecting) and `report.csv` (the same data, sortable by score).
 
 ### Options that matter
@@ -45,6 +51,22 @@ any size without re-detecting) and `report.csv` (the same data, sortable by scor
 | `--allow-partial-coverage` | off | keep tiles that do not fill the canvas |
 | `--max-magnification` | `2.0` | reject tiles enlarged beyond this |
 | `--dry-run` | off | analyse and report, write no images |
+
+### `stack` options
+
+| Flag | Default | |
+|---|---|---|
+| `--format` | `psb` | `psb` has no practical size limit; `psd` is capped at 2 GB |
+| `--bit-depth` | `8` | 8 or 16 |
+| `--compression` | `rle` | `rle` (what Photoshop writes) or `raw` |
+| `--batch-size` | none | split into several documents of at most N layers |
+| `--dpi` | `72` | resolution recorded in the document |
+
+A 2048 x 2048 RGBA layer costs about 16 MB at 8-bit, and photographic data barely
+compresses, so **a few hundred layers passes the 2 GB ceiling a `.psd` can address** —
+hence the `.psb` default. Measured on an M1 Ultra: 120 layers in 18 s producing a
+1.3 GB document, with resident memory settling at about 1 GB and staying there rather
+than growing with the layer count. Set `PROSOPON_MEMORY=1` to see that figure live.
 
 ## How the solve works
 
@@ -70,7 +92,8 @@ off 512 and 1536.
 | `ProsoponCore` | geometry, solver, coverage, quality gates — no I/O, no UI |
 | `ProsoponIO` | ImageIO loading with EXIF baked in, linear-light rendering, overlays |
 | `ProsoponVision` | Apple Vision landmarks |
-| `ProsoponCLI` | `align`, `calibrate` |
+| `ProsoponPSD` | layered `.psd` / `.psb` writer |
+| `ProsoponCLI` | `align`, `calibrate`, `stack` |
 
 See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is next.
 
@@ -81,5 +104,17 @@ swift test
 ```
 
 Covers the transform algebra, the solver invariants (including a randomised sweep
-asserting the eyes never move), polygon clipping for coverage, and a pixel-level check
-that landmarks land on their targets in the rendered output without mirroring or flipping.
+asserting the eyes never move), polygon clipping for coverage, a pixel-level check that
+landmarks land on their targets in the rendered output without mirroring or flipping,
+PackBits round-trips, and a structural reader that walks every declared section length
+in a written document and checks it lands where the content actually ends.
+
+The Swift tests prove the document is internally consistent. To prove a *third-party*
+reader agrees — that channel order, PackBits coding, alpha handling and the merged
+composite are what Photoshop expects rather than merely what we assumed:
+
+```bash
+python3 scripts/validate_psd.py ~/faces.psb ~/aligned/*.png
+```
+
+It decodes every layer with `psd-tools` and compares it against the source tile.

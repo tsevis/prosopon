@@ -109,3 +109,22 @@ public enum ImageLoading {
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 }
+
+extension ImageLoading {
+    /// Pixel dimensions without decoding the image, honouring EXIF orientation.
+    ///
+    /// A stack writer has to declare the document size in the file header before it
+    /// streams any pixels, and decoding every tile twice just to learn its size would
+    /// double the cost of the slowest step.
+    public static func dimensions(of url: URL) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+
+        let orientation = properties[kCGImagePropertyOrientation] as? UInt32 ?? 1
+        let swapsAxes = [5, 6, 7, 8].contains(Int(orientation))
+        return swapsAxes ? (height, width) : (width, height)
+    }
+}
