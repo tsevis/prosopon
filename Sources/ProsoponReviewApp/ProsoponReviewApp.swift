@@ -1,22 +1,17 @@
-import AppKit
 import ProsoponReview
 import SwiftUI
 
-/// A SwiftPM executable launches without a bundle, so it starts as a background process
-/// with no menu bar and no focus. Promoting it here is what makes it behave like an app.
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
-
+/// There is deliberately no `NSApplicationDelegateAdaptor` here.
+///
+/// An earlier version installed one to force `setActivationPolicy(.regular)`, which a
+/// bare SwiftPM executable needs to behave like an app at all. Once `review.sh` began
+/// wrapping the binary in a real `.app` bundle that was already handled — and the
+/// adaptor turned out to be actively harmful: with it in place `WindowGroup` created no
+/// window on a cold launch. The process sat in its event loop owning a menu bar and
+/// nothing else, and only produced a window when something sent it a reopen event,
+/// which made it look intermittent rather than broken.
 @main
 struct ProsoponReviewApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-
     /// `prosopon-review ~/aligned` opens that run straight away.
     private static var directoryArgument: URL? {
         let arguments = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }

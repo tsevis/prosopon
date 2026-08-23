@@ -33,9 +33,13 @@ Align and write tiles, with verification overlays:
 Fix the handful the detector got wrong:
 
 ```bash
-swift build -c release
-.build/release/prosopon-review ~/aligned
+./review.sh ~/aligned
 ```
+
+`review.sh` builds the binary if it is stale, wraps it in a `.app` bundle and opens
+that. The bundle is not optional: a bare SwiftPM executable has no `Info.plist`, and
+without one the app runs its event loop happily while never putting a window on screen.
+Called with no argument it opens the most recent run it can find.
 
 Check that the batch registered, before committing to it:
 
