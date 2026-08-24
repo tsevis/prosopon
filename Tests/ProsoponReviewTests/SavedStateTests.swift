@@ -378,6 +378,36 @@ struct SavedStateTests {
         #expect(opened.detector == .insightface, "left as it was, not reset")
     }
 
+    @Test("saving a correction leaves the rest of the run's description alone")
+    func savingPreservesTheRunsDescription() throws {
+        // Found by timestamp rather than by reading code: five tiles and a manifest
+        // rewritten in the same second, on a run whose detector then read `vision` when
+        // it had been aligned with InsightFace. Saving touches the tiles it re-rendered;
+        // everything else about the run has to survive it untouched.
+        let directory = try Fixture.makeRun(
+            names: ["a", "b"], detector: "insightface",
+            solveOptions: SolveOptions(maxStretch: 0.25, maxShear: 0.2)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let session = try ReviewSession(directory: directory)
+        session.selection = session.entries.first?.id
+        session.moveLandmark(.viewerLeftEye, toSourcePoint: Point2D(305, 402))
+
+        _ = try CorrectionWriter.save(
+            entries: session.entries, directory: session.directory,
+            spec: session.spec, options: session.options, resampler: .coreGraphics,
+            depth: OutputDepth(rawValue: session.bitDepth) ?? .eight
+        )
+
+        let manifest = try JSONDecoder().decode(
+            RunManifest.self,
+            from: Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+        )
+        #expect(manifest.detector == "insightface", "a save must not re-describe the run")
+        #expect(manifest.tiles.count == 2)
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")
