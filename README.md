@@ -17,6 +17,21 @@ vertical stretch and a shear pivoted on the eye line — capped, by default, at 
 swift build -c release
 ```
 
+A double-clickable disk image of the review app:
+
+```bash
+./scripts/make_dmg.sh              # .build/Prosopon-Review-0.1.0.dmg
+```
+
+The bundle inside is assembled by `scripts/make_app.sh`, the same code `review.sh` uses,
+so the app in the image is the app that gets tested rather than a second attempt at
+building one. The image is verified by mounting it and checking every file before the
+script reports success.
+
+It is **ad-hoc signed and not notarised** — there is no Developer ID certificate here. On
+any other Mac, Gatekeeper will refuse a double-click; open it once from the context menu,
+or run `xattr -dr com.apple.quarantine "/Applications/Prosopon Review.app"`.
+
 ## Use
 
 Measure a corpus against the canvas without writing anything:

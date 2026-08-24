@@ -46,66 +46,13 @@ if [[ -n "$RUN" ]]; then
     }
 fi
 
-# --- build if needed --------------------------------------------------------
+# --- build and wrap in an app bundle ----------------------------------------
+#
+# Assembly lives in scripts/make_app.sh so that this and the disk image cannot drift
+# apart. Two of the four recorded causes of "a live process, a menu bar, and no window"
+# were assembly mistakes; one copy of that code is one place to get it right.
 
-if [[ ! -x "$BIN" ]] || [[ -n "$(find "$REPO/Sources" "$REPO/Package.swift" -newer "$BIN" -print -quit 2>/dev/null)" ]]; then
-    echo "Building prosopon-review…"
-    ( cd "$REPO" && swift build -c release --product prosopon-review )
-fi
-
-# --- wrap in an app bundle --------------------------------------------------
-
-mkdir -p "$APP/Contents/MacOS"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key><string>prosopon-review</string>
-    <key>CFBundleIdentifier</key><string>com.tsevis.prosopon.review</string>
-    <key>CFBundleName</key><string>Prosopon Review</string>
-    <key>CFBundleDisplayName</key><string>Prosopon Review</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
-    <key>CFBundleIconFile</key><string>Prosopon</string>
-    <key>LSMinimumSystemVersion</key><string>15.0</string>
-    <key>NSHighResolutionCapable</key><true/>
-    <key>NSPrincipalClass</key><string>NSApplication</string>
-</dict>
-</plist>
-PLIST
-cp -f "$BIN" "$APP/Contents/MacOS/prosopon-review"
-
-# The artwork is a SwiftPM resource bundle sitting beside the built binary, and
-# `Bundle.module` looks for it in the app's Contents/Resources. Copying only the
-# executable leaves the info panel rendering a bare gradient with no error anywhere --
-# the same silent failure the code comments in Brand.swift are about, one level up.
-mkdir -p "$APP/Contents/Resources"
-RESOURCE_BUNDLE="$REPO/.build/release/Prosopon_ProsoponReview.bundle"
-[[ -d "$RESOURCE_BUNDLE" ]] || {
-    echo "error: $RESOURCE_BUNDLE is missing. Did the build finish?" >&2
-    exit 1
-}
-rm -rf "$APP/Contents/Resources/Prosopon_ProsoponReview.bundle"
-cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
-cp -f "$REPO/Resources/Prosopon.icns" "$APP/Contents/Resources/Prosopon.icns"
-
-# Say so here rather than discovering it in the running app.
-for required in \
-    "Contents/Resources/Prosopon.icns" \
-    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AboutBanner.jpg" \
-    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AppMark.png"
-do
-    [[ -e "$APP/$required" ]] || { echo "error: the bundle is missing $required" >&2; exit 1; }
-done
-
-# Let LaunchServices see the finished bundle before opening it. Registering a bundle
-# whose Info.plist was still being written leaves it launchable but window-less: the
-# menu bar appears and no content window ever does.
-touch "$APP"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-    -f "$APP" >/dev/null 2>&1 || true
+"$REPO/scripts/make_app.sh" "$APP" --register
 
 # --- launch -----------------------------------------------------------------
 
