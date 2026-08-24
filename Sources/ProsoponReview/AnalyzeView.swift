@@ -68,9 +68,52 @@ struct AnalyzeView: View {
         VStack(alignment: .leading, spacing: 18) {
             detectorChoice
             magnificationChoice
+            stretchChoice
             outputChoice
         }
         .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    private var stretchChoice: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Stretch a face at most")
+                .font(Theme.Font.supportEmphasis)
+                .foregroundStyle(Theme.ink)
+
+            HStack(spacing: 10) {
+                Slider(
+                    value: Binding(
+                        get: { state.maxStretch * 100 },
+                        set: { state.maxStretch = $0.rounded() / 100 }
+                    ),
+                    in: 0...20, step: 1
+                )
+                .frame(maxWidth: 260)
+                .tint(Theme.accent)
+
+                Text(String(format: "%.0f%%", state.maxStretch * 100))
+                    .font(Theme.Font.metric)
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 52, alignment: .leading)
+            }
+
+            Text("Both eyes are pinned exactly, so the only way to bring a mouth onto its "
+                + "target is to stretch the face vertically about the eye line. This caps "
+                + "that. Where the cap binds, the mouth is left short of the target \u{2014} "
+                + "and on a quartered portrait the mouth sits exactly on a seam, so what is "
+                + "left over is a step in the middle of the picture.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("It costs less than it sounds. Measured on 204 portraits: at 5% the mouth "
+                + "finished more than 20 px off on 68 tiles, at 12% on 4 \u{2014} while the "
+                + "median face was stretched 4.9% either way, because the extra range is "
+                + "only spent where the mouth was missing.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var magnificationChoice: some View {

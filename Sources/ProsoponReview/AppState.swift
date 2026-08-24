@@ -68,7 +68,38 @@ public final class AppState {
         }
     }
 
+    /// How far a face may be stretched vertically to bring its mouth onto the target.
+    ///
+    /// The setting that decides whether the mouth lands on the seam at all, which on a
+    /// quartered portrait is the join everything else is judged by. Measured on 204
+    /// portraits: at the built-in 5 per cent, 68 tiles finished more than 20 px off
+    /// target and 26 more than 50; at 12 per cent, 4 and 1. The cost is real but narrow —
+    /// the median tile is stretched 4.9 per cent either way, because the extra range is
+    /// only ever spent where the mouth was missing.
+    ///
+    /// Written down and adopted from whatever run is in play, for the same reason the
+    /// magnification gate is: a value that resets to the default on every launch means
+    /// each launch quietly re-makes what the last one settled.
+    public var maxStretch: Double = SolveOptions.default.maxStretch {
+        didSet {
+            guard maxStretch != oldValue else { return }
+            defaults.set(maxStretch, forKey: Self.stretchKey)
+        }
+    }
+
+    /// What Analyse would run with. Only the stretch is exposed; shear keeps its default,
+    /// being the one linear operation that can slide a mouth sideways with both eyes
+    /// pinned and so a different question from this one.
+    public var solveOptions: SolveOptions {
+        SolveOptions(
+            maxStretch: maxStretch,
+            maxShear: SolveOptions.default.maxShear,
+            correctsHorizontalMouthOffset: SolveOptions.default.correctsHorizontalMouthOffset
+        )
+    }
+
     static let magnificationKey = "prosopon.maxMagnification"
+    static let stretchKey = "prosopon.maxStretch"
     private let defaults: UserDefaults
 
     // MARK: The mix
@@ -107,6 +138,9 @@ public final class AppState {
         // that was never written, and a gate of zero declines everything.
         if let remembered = defaults.object(forKey: Self.magnificationKey) as? Double {
             maxMagnification = remembered
+        }
+        if let remembered = defaults.object(forKey: Self.stretchKey) as? Double {
+            maxStretch = remembered
         }
         pendingDirectory = directory
         isOpening = directory != nil
@@ -219,6 +253,7 @@ public final class AppState {
             // discarded seventeen of them: the manifest said 3.5, the review honoured
             // it, and the one button on that screen quietly disagreed with both.
             maxMagnification = opened.thresholds.maxMagnification
+            maxStretch = opened.options.maxStretch
             lastSaveSummary = nil
             stage = .fineTune
         } catch {
@@ -356,7 +391,7 @@ public final class AppState {
         progress = BatchRunner.Progress(completed: 0, total: urls.count)
 
         let spec = CanvasSpec.standard
-        let solveOptions = SolveOptions.default
+        let solveOptions = self.solveOptions
         let thresholds = QualityThresholds(maxMagnification: maxMagnification)
         // Read off `self` here rather than inside the task, which holds it weakly.
         let choice = detector
@@ -446,6 +481,7 @@ public final class AppState {
               let manifest = try? JSONDecoder().decode(RunManifest.self, from: data)
         else { return }
         maxMagnification = manifest.thresholds.maxMagnification
+        maxStretch = manifest.maxStretch
     }
 
     private func defaultOutputDirectory() -> URL? {

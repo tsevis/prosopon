@@ -40,7 +40,8 @@ enum Fixture {
         qaDisplacements: [String: (Double, Double)]? = nil,
         landmarks overrideLandmarks: FaceLandmarks? = nil,
         thresholds: QualityThresholds = .default,
-        bitDepth: Int = 16
+        bitDepth: Int = 16,
+        solveOptions: SolveOptions = .default
     ) throws -> URL {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("prosopon-review-\(UInt64.random(in: 0...UInt64.max))")
@@ -77,7 +78,7 @@ enum Fixture {
         try RunWriter.write(
             records, to: directory,
             spec: CanvasSpec.standard.scaled(toSize: canvas),
-            solveOptions: .default,
+            solveOptions: solveOptions,
             thresholds: thresholds, bitDepth: bitDepth,
             detector: detector, resampler: "coregraphics"
         )

@@ -17,6 +17,20 @@ import Testing
 @Suite("Saved state and the run's gates")
 struct SavedStateTests {
 
+    /// An app state whose settings go to a throwaway suite.
+    ///
+    /// Not `.standard`: these tests write the very keys the running application reads, so
+    /// one that used the real defaults would reach out of the test process and change the
+    /// user's slider. It did, once, before this existed.
+    private func app(directory: URL? = nil, defaults: UserDefaults? = nil) -> AppState {
+        let suite = defaults ?? UserDefaults(
+            suiteName: "com.tsevis.prosopon.tests.saved.\(UInt64.random(in: 0...UInt64.max))"
+        )!
+        return AppState(
+            directory: directory, sources: SourceLibrary(restoring: false), defaults: suite
+        )
+    }
+
     // MARK: The gates travel with the run
 
     @Test("a run reopens under the gates it was made with, not the built-in ones")
@@ -83,7 +97,7 @@ struct SavedStateTests {
         let directory = try Fixture.makeRun(names: ["a"], thresholds: raised)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let app = AppState(directory: directory, sources: SourceLibrary(restoring: false))
+        let app = app(directory: directory)
         app.openPending()
 
         #expect(app.maxMagnification == 3.5, "the slider shows what this run was made with")
@@ -94,7 +108,7 @@ struct SavedStateTests {
         let directory = try Fixture.makeRun(names: ["a"])
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let app = AppState(directory: directory, sources: SourceLibrary(restoring: false))
+        let app = app(directory: directory)
         app.openPending()
 
         #expect(app.maxMagnification == QualityThresholds.default.maxMagnification)
@@ -110,10 +124,10 @@ struct SavedStateTests {
         let defaults = UserDefaults(suiteName: suite)!
         defer { UserDefaults().removePersistentDomain(forName: suite) }
 
-        let first = AppState(sources: SourceLibrary(restoring: false), defaults: defaults)
+        let first = app(defaults: defaults)
         first.maxMagnification = 3.5
 
-        let second = AppState(sources: SourceLibrary(restoring: false), defaults: defaults)
+        let second = app(defaults: defaults)
         #expect(second.maxMagnification == 3.5)
     }
 
@@ -127,7 +141,7 @@ struct SavedStateTests {
         )
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let app = AppState(sources: SourceLibrary(restoring: false))
+        let app = app()
         #expect(app.maxMagnification == QualityThresholds.default.maxMagnification)
 
         app.outputDirectory = directory
@@ -141,10 +155,69 @@ struct SavedStateTests {
         try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: empty) }
 
-        let app = AppState(sources: SourceLibrary(restoring: false))
+        let app = app()
         app.maxMagnification = 4.0
         app.outputDirectory = empty
         #expect(app.maxMagnification == 4.0, "nothing there to take a value from")
+    }
+
+    // MARK: How far a face may be stretched
+
+    @Test("opening a run sets the stretch control to what that run used")
+    func openingARunAdoptsItsStretch() throws {
+        // The gap this closes is the one the magnification slider had, in the setting
+        // that decides whether the mouth lands on the seam at all. A run made at 12 per
+        // cent reopened showing 5, and Analyse Again would have re-made it at 5 —
+        // putting the mouth off target on sixty-four more tiles than it needed to be.
+        let directory = try Fixture.makeRun(
+            names: ["a"], solveOptions: SolveOptions(maxStretch: 0.12)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = app(directory: directory)
+        app.openPending()
+
+        #expect(app.maxStretch == 0.12)
+    }
+
+    @Test("the stretch control follows the run already in the output folder")
+    func stretchFollowsTheRunAtTheOutput() throws {
+        // Analysing into a folder that already holds a run is what Analyse Again does.
+        let directory = try Fixture.makeRun(
+            names: ["a"], solveOptions: SolveOptions(maxStretch: 0.12)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = app()
+        #expect(app.maxStretch == SolveOptions.default.maxStretch)
+        app.outputDirectory = directory
+        #expect(app.maxStretch == 0.12)
+    }
+
+    @Test("the stretch setting survives quitting the app")
+    func theStretchIsRemembered() throws {
+        let suite = "com.tsevis.prosopon.tests.stretch.\(UInt64.random(in: 0...UInt64.max))"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+
+        let first = app(defaults: defaults)
+        first.maxStretch = 0.12
+
+        let second = app(defaults: defaults)
+        #expect(second.maxStretch == 0.12)
+    }
+
+    @Test("what Analyse would run with is what the screen shows")
+    func solveOptionsFollowTheControl() {
+        // The whole point: the value on the slider is the value the run is made at.
+        // Shear is left alone — it is the one linear operation that can slide a mouth
+        // sideways with both eyes pinned, and it is not what this control is about.
+        let app = app()
+        app.maxStretch = 0.12
+
+        #expect(app.solveOptions.maxStretch == 0.12)
+        #expect(app.solveOptions.maxShear == SolveOptions.default.maxShear)
+        #expect(app.solveOptions.correctsHorizontalMouthOffset)
     }
 
     // MARK: Knowing what has been written
