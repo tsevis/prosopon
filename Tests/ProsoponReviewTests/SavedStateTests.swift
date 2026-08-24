@@ -72,6 +72,34 @@ struct SavedStateTests {
         #expect(session.entries.count == 1)
     }
 
+    @Test("opening a run sets the Analyze control to the gate that run used")
+    func openingARunAdoptsItsThresholds() throws {
+        // The gap this closes, and it undid a whole corpus: the manifest carried 3.5,
+        // the review side honoured it, and the slider on Analyze still read 2.0 because
+        // it was a stored default nothing ever touched. So Analyse Again re-ran twenty
+        // portraits at 2.0 and threw seventeen of them away — the one control on that
+        // screen silently reverting the setting the run was made with.
+        let raised = QualityThresholds(maxMagnification: 3.5)
+        let directory = try Fixture.makeRun(names: ["a"], thresholds: raised)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = AppState(directory: directory, sources: SourceLibrary(restoring: false))
+        app.openPending()
+
+        #expect(app.maxMagnification == 3.5, "the slider shows what this run was made with")
+    }
+
+    @Test("a run made at the default leaves the control at the default")
+    func openingAPlainRunDoesNotMoveTheControl() throws {
+        let directory = try Fixture.makeRun(names: ["a"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = AppState(directory: directory, sources: SourceLibrary(restoring: false))
+        app.openPending()
+
+        #expect(app.maxMagnification == QualityThresholds.default.maxMagnification)
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")

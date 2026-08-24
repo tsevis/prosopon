@@ -46,7 +46,9 @@ public final class AppState {
     /// seventeen of twenty portraits with no control anywhere to say otherwise. The tiles
     /// are soft and the metrics say so — that is a judgement for whoever is looking at
     /// them, not one to make on their behalf by refusing to write the file.
-    public var maxMagnification: Double = 2.0
+    /// The gate the next run will be made under. Starts at the built-in default and
+    /// follows whatever run is opened, so it always says what would actually happen.
+    public var maxMagnification: Double = QualityThresholds.default.maxMagnification
 
     // MARK: The mix
 
@@ -178,8 +180,14 @@ public final class AppState {
 
     private func openRun(_ directory: URL) {
         do {
-            session = try ReviewSession(directory: directory)
+            let opened = try ReviewSession(directory: directory)
+            session = opened
             outputDirectory = directory
+            // The control adopts the gate this run was made with. Leaving it on the
+            // built-in default is how Analyse Again re-ran twenty portraits at 2.0 and
+            // discarded seventeen of them: the manifest said 3.5, the review honoured
+            // it, and the one button on that screen quietly disagreed with both.
+            maxMagnification = opened.thresholds.maxMagnification
             lastSaveSummary = nil
             stage = .fineTune
         } catch {
