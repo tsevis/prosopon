@@ -67,6 +67,7 @@ struct ImportView: View {
                             source: source,
                             count: library.count(of: source),
                             unreadable: library.scan.unreadable[source.url],
+                            excluded: library.scan.excluded[source.url],
                             onToggleRecursive: { library.setRecursive($0, for: source) },
                             onReveal: { library.reveal(source) },
                             onRemove: { library.remove(source) }
@@ -176,6 +177,10 @@ private struct SourceRow: View {
     let source: ImageSource
     let count: Int
     let unreadable: String?
+    /// Left out on purpose, with the reason. Not a failure, so it does not read as one —
+    /// but never silent either, since a folder showing no images and saying nothing is
+    /// the thing this is here to prevent.
+    let excluded: String?
     let onToggleRecursive: (Bool) -> Void
     let onReveal: () -> Void
     let onRemove: () -> Void
@@ -197,6 +202,7 @@ private struct SourceRow: View {
                 Text(detail)
                     .font(Theme.Font.meta)
                     .foregroundStyle(unreadable == nil ? Theme.inkSecondary : Theme.cautionInk)
+                    .help(excluded ?? "")
                     .lineLimit(1)
             }
 
@@ -231,6 +237,7 @@ private struct SourceRow: View {
     }
 
     private var detail: String {
+        if let excluded { return excluded }
         if unreadable != nil { return "could not be read" }
         guard source.isDirectory else { return "one photograph" }
         return "\(count) image\(count == 1 ? "" : "s")"

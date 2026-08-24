@@ -37,16 +37,26 @@ public struct SourceScan: Sendable, Equatable {
     /// Sources that could not be read at all, with the reason. A folder that has been
     /// moved or unmounted is a thing to say out loud, not to quietly count as empty.
     public let unreadable: [URL: String]
+    /// Folders deliberately left out, with the reason. Separate from `unreadable`
+    /// because nothing went wrong: a mix folder is output, and refusing it silently
+    /// would leave somebody staring at "0 images found" with no idea why.
+    public let excluded: [URL: String]
 
     public var imageCount: Int { imageURLs.count }
     public var isEmpty: Bool { imageURLs.isEmpty }
 
     public static let empty = SourceScan(imageURLs: [], countsBySource: [:], unreadable: [:])
 
-    public init(imageURLs: [URL], countsBySource: [URL: Int], unreadable: [URL: String]) {
+    public init(
+        imageURLs: [URL],
+        countsBySource: [URL: Int],
+        unreadable: [URL: String],
+        excluded: [URL: String] = [:]
+    ) {
         self.imageURLs = imageURLs
         self.countsBySource = countsBySource
         self.unreadable = unreadable
+        self.excluded = excluded
     }
 }
 
@@ -69,8 +79,14 @@ public enum SourceScanner {
         var collected: [URL] = []
         var counts: [URL: Int] = [:]
         var unreadable: [URL: String] = [:]
+        var excluded: [URL: String] = [:]
 
         for source in sources {
+            if source.isDirectory, isMixFolder(source.url) {
+                excluded[source.url] = mixFolderReason
+                counts[source.url] = 0
+                continue
+            }
             let found: [URL]
             do {
                 found = try images(in: source)
@@ -90,7 +106,27 @@ public enum SourceScanner {
         }
 
         collected.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
-        return SourceScan(imageURLs: collected, countsBySource: counts, unreadable: unreadable)
+        return SourceScan(
+            imageURLs: collected, countsBySource: counts,
+            unreadable: unreadable, excluded: excluded
+        )
+    }
+
+    /// What a mix folder is recognised by.
+    ///
+    /// The manifest, not the file names. A composite is 2048 x 2048 with eyes and a mouth
+    /// roughly where a portrait's are, and there is no reliable way to tell one from a
+    /// photograph by looking at the pixels — on a real corpus the gates caught 101 of 102
+    /// and let one through. The manifest beside them is unambiguous.
+    static let mixManifestName = "mix-manifest.json"
+
+    static let mixFolderReason = "a mix folder \u{2014} these are composites this app made, "
+        + "not photographs to align"
+
+    static func isMixFolder(_ directory: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent(mixManifestName).path
+        )
     }
 
     /// Every recognised image one source stands for.
@@ -121,15 +157,23 @@ public enum SourceScanner {
         }
         guard let enumerator = manager.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: directory.path])
         }
 
         var found: [URL] = []
-        for case let url as URL in enumerator
-        where ImageLoading.recognisedExtensions.contains(url.pathExtension.lowercased()) {
+        // Directories holding a mix manifest are skipped whole, previews and all. The
+        // enumerator is told to skip descendants rather than filtered afterwards, so a
+        // mix folder with thousands of composites in it costs nothing to pass over.
+        for case let url as URL in enumerator {
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                if isMixFolder(url) { enumerator.skipDescendants() }
+                continue
+            }
+            guard ImageLoading.recognisedExtensions.contains(url.pathExtension.lowercased())
+            else { continue }
             found.append(url)
         }
         return found.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }

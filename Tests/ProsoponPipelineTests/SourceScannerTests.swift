@@ -214,3 +214,73 @@ struct SourceScannerTests {
         #expect(!ImageSource.at(file).isDirectory)
     }
 }
+
+/// A mix folder is output, and output that looks exactly like input.
+///
+/// This came from a real corpus: a folder of 51 composites was added to Import beside the
+/// portraits, and the run took all 306 candidates. The gates caught 101 of them on
+/// coverage and magnification — and one composite got through, so a quartered portrait of
+/// four people entered the corpus as a face. A composite is 2048 x 2048 with eyes and a
+/// mouth roughly where a portrait's are; there is no reliable way to tell one from a
+/// photograph by looking at the pixels. There is a completely reliable way to tell by
+/// looking for the manifest sitting next to them.
+@Suite("Mix folders are not source material")
+struct MixFolderExclusionTests {
+
+    @Test("a folder holding a mix manifest is skipped whole")
+    func skipsAMixFolder() throws {
+        let tree = try Tree(); defer { tree.remove() }
+        try tree.image("portraits/a.png")
+        try tree.image("portraits/b.png")
+        try tree.image("portraits/mixed/mix-0001.png")
+        try tree.file("portraits/mixed/mix-manifest.json", contents: "{}")
+
+        let scan = SourceScanner.scan([ImageSource.at(try tree.directory("portraits"))])
+
+        #expect(scan.imageCount == 2, "the two portraits, and neither composite")
+        #expect(!scan.imageURLs.contains { $0.path.contains("/mixed/") })
+    }
+
+    @Test("its subfolders go with it, previews included")
+    func skipsBelowTheMixFolderToo() throws {
+        // The previews folder is where half the contamination came from: 51 composites
+        // and 51 pictures of the same composites, one directory further down.
+        let tree = try Tree(); defer { tree.remove() }
+        try tree.image("portraits/a.png")
+        try tree.image("portraits/Mix 2/mix-0001.png")
+        try tree.image("portraits/Mix 2/previews/mix-0001.png")
+        try tree.file("portraits/Mix 2/mix-manifest.json", contents: "{}")
+
+        let scan = SourceScanner.scan([ImageSource.at(try tree.directory("portraits"))])
+
+        #expect(scan.imageCount == 1)
+        #expect(!scan.imageURLs.contains { $0.path.contains("previews") })
+    }
+
+    @Test("adding a mix folder on purpose is refused, not silently emptied")
+    func namesAMixFolderAddedDirectly() throws {
+        // Silence here would be the worse failure: somebody who drags a mix folder in
+        // and sees "0 images" has been told nothing about why.
+        let tree = try Tree(); defer { tree.remove() }
+        try tree.image("Mix 2/mix-0001.png")
+        try tree.file("Mix 2/mix-manifest.json", contents: "{}")
+
+        let folder = try tree.directory("Mix 2")
+        let scan = SourceScanner.scan([ImageSource.at(folder)])
+
+        #expect(scan.imageCount == 0)
+        #expect(scan.excluded[folder] != nil, "and it says so")
+    }
+
+    @Test("an ordinary folder is untouched")
+    func leavesOrdinaryFoldersAlone() throws {
+        let tree = try Tree(); defer { tree.remove() }
+        try tree.image("portraits/a.png")
+        try tree.image("portraits/deeper/b.png")
+
+        let scan = SourceScanner.scan([ImageSource.at(try tree.directory("portraits"))])
+
+        #expect(scan.imageCount == 2)
+        #expect(scan.excluded.isEmpty)
+    }
+}
