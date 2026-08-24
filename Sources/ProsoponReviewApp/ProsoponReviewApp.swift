@@ -12,6 +12,14 @@ import SwiftUI
 /// which made it look intermittent rather than broken.
 @main
 struct ProsoponReviewApp: App {
+
+    /// Runs before the scene is built, which is the only place it can run: the check has
+    /// to happen when there is no window, and a `.task` on a view that was never created
+    /// never fires.
+    init() {
+        MainActor.assumeIsolated { WindowWatchdog.start() }
+    }
+
     /// `prosopon-review ~/aligned` opens that run straight away.
     private static var directoryArgument: URL? {
         let arguments = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
