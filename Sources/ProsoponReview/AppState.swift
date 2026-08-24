@@ -33,7 +33,10 @@ public final class AppState {
     /// asking for an output folder before anybody has chosen an input is a question out
     /// of order.
     public var outputDirectory: URL? {
-        didSet { sources.outputDirectory = outputDirectory }
+        didSet {
+            sources.outputDirectory = outputDirectory
+            adoptThresholdsOfRunAtOutput()
+        }
     }
 
     public var detector = DetectorChoice.vision
@@ -46,9 +49,27 @@ public final class AppState {
     /// seventeen of twenty portraits with no control anywhere to say otherwise. The tiles
     /// are soft and the metrics say so — that is a judgement for whoever is looking at
     /// them, not one to make on their behalf by refusing to write the file.
-    /// The gate the next run will be made under. Starts at the built-in default and
-    /// follows whatever run is opened, so it always says what would actually happen.
-    public var maxMagnification: Double = QualityThresholds.default.maxMagnification
+    /// The gate the next run will be made under.
+    ///
+    /// Written down, because it is the only thing standing between a corpus and Analyse
+    /// writing it away, and a value that resets to the built-in default on every launch
+    /// means each launch destroys what the last one made. That is not hypothetical: the
+    /// same twenty portraits were aligned at 3.5 and thrown away at 2.0 twice, once
+    /// because a reopened run did not set it and once because the app had been started
+    /// with no run at all.
+    ///
+    /// It also follows whatever run is in play — one opened for review, or one already
+    /// sitting in the output folder — so the control always describes what pressing it
+    /// would actually do.
+    public var maxMagnification: Double = QualityThresholds.default.maxMagnification {
+        didSet {
+            guard maxMagnification != oldValue else { return }
+            defaults.set(maxMagnification, forKey: Self.magnificationKey)
+        }
+    }
+
+    static let magnificationKey = "prosopon.maxMagnification"
+    private let defaults: UserDefaults
 
     // MARK: The mix
 
@@ -75,8 +96,18 @@ public final class AppState {
     /// True between construction and that run being read.
     public private(set) var isOpening: Bool
 
-    public init(directory: URL? = nil, sources: SourceLibrary = SourceLibrary()) {
+    public init(
+        directory: URL? = nil,
+        sources: SourceLibrary = SourceLibrary(),
+        defaults: UserDefaults = .standard
+    ) {
         self.sources = sources
+        self.defaults = defaults
+        // `object(forKey:)` rather than `double(forKey:)`: the latter answers 0 for a key
+        // that was never written, and a gate of zero declines everything.
+        if let remembered = defaults.object(forKey: Self.magnificationKey) as? Double {
+            maxMagnification = remembered
+        }
         pendingDirectory = directory
         isOpening = directory != nil
         // Named now rather than after the load, so the strip does not start on Import and
@@ -403,6 +434,20 @@ public final class AppState {
     }
 
     /// `~/Pictures/Prosopon/<source folder> aligned`, so the first run needs no decision.
+    /// Takes the gate from a run that is already in the output folder.
+    ///
+    /// Reads the manifest directly rather than opening a session: this runs on every
+    /// change of the output folder, including the one `defaultOutputDirectory` makes,
+    /// and opening a whole run to read one number would be work nobody asked for.
+    private func adoptThresholdsOfRunAtOutput() {
+        guard let directory = outputDirectory else { return }
+        let url = directory.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: url),
+              let manifest = try? JSONDecoder().decode(RunManifest.self, from: data)
+        else { return }
+        maxMagnification = manifest.thresholds.maxMagnification
+    }
+
     private func defaultOutputDirectory() -> URL? {
         guard let first = sources.sources.first else { return nil }
         let name = first.isDirectory

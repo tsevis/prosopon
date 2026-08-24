@@ -100,6 +100,53 @@ struct SavedStateTests {
         #expect(app.maxMagnification == QualityThresholds.default.maxMagnification)
     }
 
+    @Test("the gate survives quitting the app")
+    func theGateIsRemembered() throws {
+        // Why this is not a nicety: the control is the only thing standing between a
+        // corpus and Analyse writing it away. A value that resets to the built-in
+        // default every launch means the next launch destroys the run the last one
+        // made — which is exactly what happened, twice, to the same twenty portraits.
+        let suite = "com.tsevis.prosopon.tests.gate.\(UInt64.random(in: 0...UInt64.max))"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+
+        let first = AppState(sources: SourceLibrary(restoring: false), defaults: defaults)
+        first.maxMagnification = 3.5
+
+        let second = AppState(sources: SourceLibrary(restoring: false), defaults: defaults)
+        #expect(second.maxMagnification == 3.5)
+    }
+
+    @Test("the gate follows the run already sitting in the output folder")
+    func theGateFollowsTheRunAtTheOutput() throws {
+        // Analysing into a folder that already holds a run is the ordinary case — it is
+        // what Analyse Again does. The control has to describe that run, or pressing it
+        // quietly re-makes it under different rules.
+        let directory = try Fixture.makeRun(
+            names: ["a"], thresholds: QualityThresholds(maxMagnification: 3.5)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = AppState(sources: SourceLibrary(restoring: false))
+        #expect(app.maxMagnification == QualityThresholds.default.maxMagnification)
+
+        app.outputDirectory = directory
+        #expect(app.maxMagnification == 3.5, "the folder already says what it was made at")
+    }
+
+    @Test("pointing at an empty folder leaves the gate alone")
+    func anEmptyOutputFolderChangesNothing() throws {
+        let empty = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("prosopon-empty-\(UInt64.random(in: 0...UInt64.max))")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: empty) }
+
+        let app = AppState(sources: SourceLibrary(restoring: false))
+        app.maxMagnification = 4.0
+        app.outputDirectory = empty
+        #expect(app.maxMagnification == 4.0, "nothing there to take a value from")
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")
