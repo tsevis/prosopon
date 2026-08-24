@@ -84,6 +84,7 @@ public final class AppState {
         didSet {
             guard maxStretch != oldValue else { return }
             defaults.set(maxStretch, forKey: Self.stretchKey)
+            session?.options = solveOptions
         }
     }
 
@@ -99,6 +100,7 @@ public final class AppState {
         didSet {
             guard maxShear != oldValue else { return }
             defaults.set(maxShear, forKey: Self.shearKey)
+            session?.options = solveOptions
         }
     }
 

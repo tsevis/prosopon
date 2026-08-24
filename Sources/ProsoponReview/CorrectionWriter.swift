@@ -76,14 +76,14 @@ public enum CorrectionWriter {
             }
         }
 
-        try updateManifest(entries: entries, directory: directory, spec: spec)
+        try updateManifest(entries: entries, directory: directory, spec: spec, options: options)
         summary.nowAccepted = edited.filter { $0.quality?.isAccepted == true }.count
         return summary
     }
 
     /// Rewrites the manifest so a later `stack` or `qa` run sees the corrections.
     private static func updateManifest(
-        entries: [ReviewEntry], directory: URL, spec: CanvasSpec
+        entries: [ReviewEntry], directory: URL, spec: CanvasSpec, options: SolveOptions
     ) throws {
         let url = directory.appendingPathComponent("manifest.json")
         guard var manifest = try? JSONDecoder().decode(
@@ -107,6 +107,13 @@ public enum CorrectionWriter {
             if !(entry.quality?.isAccepted ?? false) { updated.outputPath = nil }
             return updated
         }
+
+        // The caps travel with the run, and a correction may have been made under wider
+        // ones than the run was aligned with. Recording the run's old numbers would
+        // describe tiles that no longer exist, and would re-solve the correction against
+        // a budget it was never made with the next time this folder is opened.
+        manifest.maxStretch = options.maxStretch
+        manifest.maxShear = options.maxShear
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

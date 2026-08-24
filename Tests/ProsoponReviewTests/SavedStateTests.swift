@@ -259,6 +259,74 @@ struct SavedStateTests {
         #expect(app.solveOptions.maxShear == 0.2)
     }
 
+    // MARK: The caps reach the correction
+
+    @Test("raising the cap lets a drag actually move the face")
+    func aDragUsesTheCurrentCaps() throws {
+        // Reported from Fine Tune: dragging the mouth marker down the y axis moves the
+        // marker and not the face. Raising the slider on Analyze did nothing, because a
+        // correction re-solved against the caps frozen in the run's manifest rather than
+        // against the control. Two places, one of them unreachable.
+        let directory = try Fixture.makeRun(
+            names: ["a"], solveOptions: SolveOptions(maxStretch: 0.05, maxShear: 0.05)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = app(directory: directory)
+        app.openPending()
+        let session = try #require(app.session)
+        session.selection = session.entries.first?.id
+
+        // Eyes at y = 400 and the canvas wanting a mouth drop of 144 after the
+        // similarity: a mouth at y = 575 asks for about 28 per cent, so five per cent
+        // cannot reach it and thirty can. Kept on the centre line so shear stays out of
+        // it — this is the y axis alone.
+        app.maxStretch = 0.05
+        session.moveLandmark(.mouth, toSourcePoint: Point2D(400, 575))
+        let atFivePercent = try #require(session.entries.first?.quality?.appliedStretchPercent)
+        let cappedError = try #require(session.entries.first?.quality?.mouthErrorPixels)
+
+        app.maxStretch = 0.30
+        session.moveLandmark(.mouth, toSourcePoint: Point2D(400, 575))
+        let atThirty = try #require(session.entries.first?.quality?.appliedStretchPercent)
+        let freedError = try #require(session.entries.first?.quality?.mouthErrorPixels)
+
+        #expect(abs(atFivePercent) <= 5.0001, "the run's own cap held it")
+        #expect(abs(atThirty) > 20, "raising the control let the solve reach for the mouth")
+        #expect(freedError < cappedError, "and the mouth actually got closer to target")
+    }
+
+    @Test("saving records the caps the corrections were made under")
+    func savingWritesTheCapsBack() throws {
+        // Otherwise the run says one thing and its tiles are another, and reopening it
+        // would re-solve the correction against a cap it was never made with.
+        let directory = try Fixture.makeRun(
+            names: ["a"], solveOptions: SolveOptions(maxStretch: 0.05, maxShear: 0.05)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = app(directory: directory)
+        app.openPending()
+        let session = try #require(app.session)
+        session.selection = session.entries.first?.id
+        app.maxStretch = 0.25
+        app.maxShear = 0.20
+        session.moveLandmark(.mouth, toSourcePoint: Point2D(450, 620))
+
+        _ = try CorrectionWriter.save(
+            entries: session.entries, directory: session.directory,
+            spec: session.spec, options: session.options, resampler: .coreGraphics,
+            depth: OutputDepth(rawValue: session.bitDepth) ?? .eight
+        )
+
+        let manifest = try JSONDecoder().decode(
+            RunManifest.self,
+            from: Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+        )
+        #expect(manifest.maxStretch == 0.25)
+        #expect(manifest.maxShear == 0.20)
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")

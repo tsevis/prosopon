@@ -44,7 +44,13 @@ public final class ReviewSession {
     public private(set) var directory: URL
     public private(set) var entries: [ReviewEntry] = []
     public private(set) var spec: CanvasSpec = .standard
-    public private(set) var options: SolveOptions = .default
+    /// The caps a correction is re-solved under.
+    ///
+    /// Settable, and not only read from the manifest, because a correction is exactly
+    /// where somebody discovers the cap is too tight: dragging a mouth asks for whatever
+    /// stretch would put it on target, and a budget frozen at whatever the run happened
+    /// to be made with means the marker moves and the face does not.
+    public var options: SolveOptions = .default
     public private(set) var resampler: String = "lanczos"
     public private(set) var detector: String = "vision"
     /// The gates the run was aligned with, so re-solving a correction reaches the same
