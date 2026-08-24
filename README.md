@@ -20,8 +20,12 @@ swift build -c release
 A double-clickable disk image of the review app:
 
 ```bash
-./scripts/make_dmg.sh              # .build/Prosopon-Review-0.1.0.dmg
+./scripts/make_dmg.sh              # dist/Prosopon-Review-0.1.0.dmg
 ```
+
+**The image is built in the repository, under `dist/`, and committed with it** — not in
+`.build/`, which git ignores and `swift package clean` deletes. A release should still be
+there tomorrow without anyone rebuilding it.
 
 The bundle inside is assembled by `scripts/make_app.sh`, the same code `review.sh` uses,
 so the app in the image is the app that gets tested rather than a second attempt at

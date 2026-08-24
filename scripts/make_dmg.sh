@@ -4,9 +4,14 @@
 #
 #   scripts/make_dmg.sh [output.dmg]
 #
-# Defaults to .build/Prosopon-Review-<version>.dmg. The bundle inside is assembled by
-# scripts/make_app.sh, the same code review.sh uses, so the app in the image is the app
-# that gets tested rather than a second attempt at building one.
+# Writes dist/Prosopon-Review-<version>.dmg **inside the repository**, and the image is
+# committed with it. Not .build/ -- that is SwiftPM's scratch directory, it is ignored by
+# git, and `swift package clean` deletes it, so a release built there exists only until
+# the next tidy-up.
+#
+# The bundle inside is assembled by scripts/make_app.sh, the same code review.sh uses, so
+# the app in the image is the app that gets tested rather than a second attempt at
+# building one.
 #
 # The image is compressed, read-only, and carries an /Applications symlink so it can be
 # installed by dragging. It is **ad-hoc signed and not notarised**: on any Mac other than
@@ -25,7 +30,7 @@ VERSION="$(grep -o 'CFBundleShortVersionString</key><string>[^<]*' "$REPO/script
            | head -1 | sed 's/.*<string>//')"
 VERSION="${VERSION:-0.1.0}"
 
-OUTPUT="${1:-$REPO/.build/Prosopon-Review-$VERSION.dmg}"
+OUTPUT="${1:-$REPO/dist/Prosopon-Review-$VERSION.dmg}"
 STAGING="$REPO/.build/dmg-staging"
 
 usage() {
@@ -96,7 +101,7 @@ SIZE="$(du -h "$OUTPUT" | cut -f1 | tr -d ' ')"
 echo
 echo "  $(basename "$OUTPUT")  $SIZE, version $VERSION"
 echo "  every file checked on the mounted image"
-echo "  $OUTPUT"
+echo "  ${OUTPUT#"$REPO/"}  (in the repository — commit it)"
 echo
 echo "  Unsigned beyond ad-hoc: on another Mac, open it once from the context menu, or"
 echo "  run  xattr -dr com.apple.quarantine \"/Applications/$NAME.app\""
