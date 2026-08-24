@@ -50,6 +50,17 @@ struct BrandTests {
         #expect(FileManager.default.fileExists(atPath: icon.path), "missing \(icon.path)")
     }
 
+    @Test("the footer carries the house credit and both sites")
+    func footerMatchesTheHouse() {
+        // Word for word as the other applications on this machine carry it, so opening
+        // any of them reads as opening the same program.
+        #expect(AboutText.credit == "Created by Charis Tsevis, with the help of Claude Code.")
+        #expect(Brand.makerSiteLabel == "tsevis.com")
+        #expect(Brand.githubLabel == "github.com/tsevis")
+        #expect(Brand.makerSite.host()?.contains("tsevis.com") == true)
+        #expect(Brand.githubSite.absoluteString == "https://github.com/tsevis")
+    }
+
     @Test("the panel's words are there to read")
     func textIsPresent() {
         #expect(AboutText.story.count >= 4)

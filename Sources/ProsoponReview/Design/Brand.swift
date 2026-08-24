@@ -19,6 +19,9 @@ public enum Brand {
 
     public static let makerName = "Charis Tsevis"
     public static let makerSite = URL(string: "https://www.tsevis.com")!
+    public static let makerSiteLabel = "tsevis.com"
+    public static let githubSite = URL(string: "https://github.com/tsevis")!
+    public static let githubLabel = "github.com/tsevis"
     public static let repository = URL(string: "https://github.com/tsevis/prosopon")!
 
     /// The 640 x 250 key art: two half-faces on the canonical grid, both eyes on the eye

@@ -60,5 +60,6 @@ public enum AboutText {
             + "with a CPU reference the GPU is measured against, tap for tap.",
     ]
 
-    public static let credit = "Made by \(Brand.makerName)"
+    /// The footer line, word for word as the other applications on this machine carry it.
+    public static let credit = "Created by \(Brand.makerName), with the help of Claude Code."
 }

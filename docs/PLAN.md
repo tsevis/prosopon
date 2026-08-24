@@ -429,9 +429,10 @@ A bookmark that will not resolve is **kept and named**, never dropped. So is a d
 failure of the whole list: a `try?` there would empty the source list with no error
 anywhere, which is the exact shape of the `qa.json` bug that hid a dead feature for weeks.
 
-### Two failures that look like nothing
+### Failures that look like nothing
 
-Both worth remembering because neither produces an error.
+None of these produces an error, and three of them produce the identical symptom: a live
+process, a menu bar, and no window.
 
 - **A resource loaded by asset name comes back empty.** Nino recorded it: the splash
   rendered as a bare gradient and every layout assertion still passed, because a missing
@@ -440,6 +441,21 @@ Both worth remembering because neither produces an error.
   `Contents/Resources`, and `review.sh` used to copy only the executable. It now copies the
   resource bundle and the icon, and checks all three files landed rather than letting the
   running app discover it.
+- **Reading the run during scene construction races with the window being created.**
+  Measured here: the same build and the same arguments produced a window on one launch and
+  not the next, with the process alive and idle in its event loop either way. `AppState`
+  now reads nothing in `init`; the window goes up first and a `.task` loads into it. Nino
+  recorded the same race and both it and CrewListr answer it the same way. `AppStateTests`
+  pins the rule by asserting that construction leaves `session` nil.
+- **Copying a new binary into the bundle without re-registering it.** Already written down
+  in `review.sh` and still easy to do by hand while debugging: the app launches, owns a
+  menu bar, and never shows a window. Two hours of this session went into a measurement
+  that turned out to be this, not the code under test. Use `review.sh`; it does the
+  `touch` and the `lsregister`.
+
+The last two are worth stating together, because they are indistinguishable from outside
+and from each other. Anything that measures whether a window appeared has to build the
+bundle the way `review.sh` builds it, or it is measuring its own shortcut.
 
 ---
 

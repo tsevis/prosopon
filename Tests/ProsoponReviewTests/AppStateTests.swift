@@ -22,8 +22,42 @@ struct AppStateTests {
         )
     }
 
+    /// Constructed and then opened, which is the sequence the window performs: the run
+    /// is read from a `.task` once there is a window, never during construction.
     private func state(directory: URL? = nil) -> AppState {
-        AppState(directory: directory, sources: isolatedSources())
+        let app = AppState(directory: directory, sources: isolatedSources())
+        app.openPending()
+        return app
+    }
+
+    @Test("construction reads nothing from disk")
+    func initDoesNoWork() throws {
+        // The rule this pins: decoding a manifest while the scene is being constructed
+        // races with the window being created, and the losing side of that race is a
+        // live process with no window and no error. Measured on this machine as a window
+        // that appeared on one launch and not the next from the same build.
+        let directory = try Fixture.makeRun(names: ["a"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = AppState(directory: directory, sources: isolatedSources())
+        #expect(app.session == nil, "the run must not be read during construction")
+        #expect(app.isOpening)
+        // The stage is settled up front regardless, so the strip does not start on Import
+        // and jump to Fine Tune a moment later.
+        #expect(app.stage == .fineTune)
+
+        app.openPending()
+        #expect(app.session != nil)
+        #expect(!app.isOpening)
+    }
+
+    @Test("opening nothing finishes immediately")
+    func openPendingWithNoRun() {
+        let app = AppState(directory: nil, sources: isolatedSources())
+        #expect(!app.isOpening)
+        app.openPending()
+        #expect(app.session == nil)
+        #expect(!app.isOpening)
     }
 
     @Test("an app with nothing loaded opens on Import and says so")
@@ -60,7 +94,6 @@ struct AppStateTests {
         let app = state(directory: empty)
         #expect(app.session == nil)
         #expect(app.problem != nil)
-        #expect(app.stage == .importPortraits)
     }
 
     @Test("declined tiles are counted apart from accepted ones")

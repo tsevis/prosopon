@@ -23,9 +23,23 @@ public struct ReviewWindow: View {
     }
 
     public var body: some View {
+        // A window on screen before any manifest is read. See `AppState.openPending`:
+        // decoding one during scene construction races with the window being created,
+        // and the losing side of that race is a live process with no window at all.
+        if state.isOpening {
+            OpeningView()
+                .frame(minWidth: 1000, minHeight: 700)
+                .background(Theme.ground)
+                .task { state.openPending() }
+        } else {
+            workspace
+        }
+    }
+
+    private var workspace: some View {
         @Bindable var state = state
 
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             StageStrip(selection: $state.stage, state: state.chrome)
             CommandBar(commands: commands, perform: perform) {
                 SubjectChipView(
@@ -64,6 +78,8 @@ public struct ReviewWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: .prosoponAddSources)) { _ in
             addSources()
         }
+        // Safe here, where it was not before: this view only exists once the window is
+        // up, so the panel is raised onto a window rather than instead of one.
         .task { if AboutPresentation.wanted() { showingAbout = true } }
         .onChange(of: showingAbout) { _, showing in
             if !showing { AboutPresentation.remember() }
@@ -242,5 +258,21 @@ enum AboutPresentation {
 
     static func remember() {
         UserDefaults.standard.set(Brand.version, forKey: key)
+    }
+}
+
+/// Shown for the moment between the window appearing and the run being read.
+///
+/// Usually too brief to notice, and that is fine — its job is not to be looked at but to
+/// exist, so that there is a window before there is any work.
+private struct OpeningView: View {
+    var body: some View {
+        EmptyStateView(
+            symbol: "square.grid.3x3.topleft.filled",
+            title: "Opening the run",
+            message: "Reading the manifest and, if one was written, the QA report beside it."
+        ) {
+            ProgressView().controlSize(.small)
+        }
     }
 }

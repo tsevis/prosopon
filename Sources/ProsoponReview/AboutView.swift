@@ -107,9 +107,10 @@ public struct AboutView: View {
                 Text(Brand.name)
                     .font(.system(size: 36, weight: .semibold))
                     .tracking(-0.6)
-                    // The brand pink undiluted: this is display type on a dark
-                    // photograph, not a label on a control.
-                    .foregroundStyle(Theme.brand)
+                    // White, not the accent. The other applications set their title in
+                    // the accent because their key art is a dark blue field; this one's
+                    // is a magenta photograph, and pink on pink would disappear.
+                    .foregroundStyle(.white)
                 Text(Brand.tagline)
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.85))
@@ -163,6 +164,21 @@ public struct AboutView: View {
         .padding(.top, 2)
     }
 
+    /// A site named by its domain rather than by a word like "website", so the footer
+    /// says where it is going.
+    private func link(_ label: String, to url: URL) -> some View {
+        Button { openURL(url) } label: {
+            Text(label)
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.accentText)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help(url.absoluteString)
+        .accessibilityLabel("Opens \(label)")
+    }
+
     // MARK: - Footer
 
     private var footer: some View {
@@ -170,18 +186,14 @@ public struct AboutView: View {
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
             HStack(spacing: 14) {
-                Button { openURL(Brand.makerSite) } label: {
-                    Text(AboutText.credit)
-                        .font(Theme.Font.meta)
-                        .foregroundStyle(Theme.inkSecondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointerStyle(.link)
-                .help(Brand.makerSite.absoluteString)
-                .accessibilityLabel("\(AboutText.credit). Opens \(Brand.makerName)'s website.")
+                Text(AboutText.credit)
+                    .font(Theme.Font.meta)
+                    .foregroundStyle(Theme.inkSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                link(Brand.makerSiteLabel, to: Brand.makerSite)
+                link(Brand.githubLabel, to: Brand.githubSite)
 
                 Spacer(minLength: 8)
 

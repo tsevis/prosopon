@@ -38,23 +38,36 @@ public final class AppState {
 
     private var analysisTask: Task<Void, Never>?
 
+    /// A run named on the command line, not yet read. See `openPending`.
+    private var pendingDirectory: URL?
+    /// True between construction and that run being read.
+    public private(set) var isOpening: Bool
+
     public init(directory: URL? = nil, sources: SourceLibrary = SourceLibrary()) {
         self.sources = sources
+        pendingDirectory = directory
+        isOpening = directory != nil
+        // Named now rather than after the load, so the strip does not start on Import and
+        // jump to Fine Tune a moment later.
+        stage = Stage.opening(hasRun: directory != nil)
+    }
 
+    /// Reads the run named on the command line.
+    ///
+    /// **Deliberately not done in `init`.** Decoding a manifest and a QA report is
+    /// synchronous disk work, and doing it while the scene is being constructed races
+    /// with the window being created — measured on this machine as a window that appears
+    /// on one launch and not the next, from the same build and the same arguments, with
+    /// the process alive and idle in its event loop either way. Nino recorded the same
+    /// thing and both it and CrewListr answer it the same way: put a window on screen
+    /// first, then load into it.
+    public func openPending() {
+        defer { isOpening = false }
+        guard let directory = pendingDirectory else { return }
+        pendingDirectory = nil
         // A folder given on the command line is the reason the app was opened, so a
         // failure to read it has to be said rather than dropping into an empty window.
-        var opened: ReviewSession?
-        var failure: String?
-        if let directory {
-            do { opened = try ReviewSession(directory: directory) }
-            catch { failure = "\(error)" }
-        }
-
-        session = opened
-        problem = failure
-        outputDirectory = opened == nil ? nil : directory
-        stage = Stage.opening(hasRun: opened != nil)
-        sources.outputDirectory = outputDirectory
+        open(directory)
     }
 
     // MARK: What the chrome shows
@@ -162,16 +175,16 @@ public final class AppState {
                     }
                 )
                 guard !Task.isCancelled else {
-                    await self?.finishAnalysis(directory: nil, problem: nil)
+                    await MainActor.run { self?.finishAnalysis(directory: nil, problem: nil) }
                     return
                 }
                 try RunWriter.write(
                     tiles, to: directory, spec: spec, solveOptions: solveOptions,
                     detector: detectorName, resampler: Resampler.lanczos.rawValue
                 )
-                await self?.finishAnalysis(directory: directory, problem: nil)
+                await MainActor.run { self?.finishAnalysis(directory: directory, problem: nil) }
             } catch {
-                await self?.finishAnalysis(directory: nil, problem: "\(error)")
+                await MainActor.run { self?.finishAnalysis(directory: nil, problem: "\(error)") }
             }
         }
     }
