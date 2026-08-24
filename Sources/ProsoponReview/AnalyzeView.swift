@@ -69,6 +69,7 @@ struct AnalyzeView: View {
             detectorChoice
             magnificationChoice
             stretchChoice
+            shearChoice
             outputChoice
         }
         .frame(maxWidth: 560, alignment: .leading)
@@ -86,7 +87,7 @@ struct AnalyzeView: View {
                         get: { state.maxStretch * 100 },
                         set: { state.maxStretch = $0.rounded() / 100 }
                     ),
-                    in: 0...20, step: 1
+                    in: 0...50, step: 1
                 )
                 .frame(maxWidth: 260)
                 .tint(Theme.accent)
@@ -110,6 +111,57 @@ struct AnalyzeView: View {
                 + "finished more than 20 px off on 68 tiles, at 12% on 4 \u{2014} while the "
                 + "median face was stretched 4.9% either way, because the extra range is "
                 + "only spent where the mouth was missing.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("It also bounds every correction made in Fine Tune. Moving the mouth "
+                + "marker asks for whatever stretch would bring that point onto the "
+                + "target, and where this cap is lower than that, the marker moves and "
+                + "the face does not \u{2014} which reads as the drag having done nothing. "
+                + "Fine Tune reports both figures, as \u{201C}capped, wanted\u{201D}.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var shearChoice: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Shear a face at most")
+                .font(Theme.Font.supportEmphasis)
+                .foregroundStyle(Theme.ink)
+
+            HStack(spacing: 10) {
+                Slider(
+                    value: Binding(
+                        get: { state.maxShear * 100 },
+                        set: { state.maxShear = $0.rounded() / 100 }
+                    ),
+                    in: 0...30, step: 1
+                )
+                .frame(maxWidth: 260)
+                .tint(Theme.accent)
+
+                Text(String(format: "%.0f%%", state.maxShear * 100))
+                    .font(Theme.Font.metric)
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 52, alignment: .leading)
+            }
+
+            Text("The other half of placing a mouth. Stretch moves it up and down; shear "
+                + "is the only thing that can slide it sideways with both eyes still "
+                + "pinned, so it owns the horizontal exactly as stretch owns the "
+                + "vertical. Set to nothing, the horizontal offset is left uncorrected "
+                + "and the mouth lands wherever the face's own proportions put it.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("One is not much use without the other. Measured on 204 portraits: at "
+                + "25% stretch with shear left at 5%, the worst mouth still finished "
+                + "32.5 px off target and every one of those pixels was horizontal. At "
+                + "25% and 20% together, the worst was 0.0 px.")
                 .font(Theme.Font.meta)
                 .foregroundStyle(Theme.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -220,6 +220,45 @@ struct SavedStateTests {
         #expect(app.solveOptions.correctsHorizontalMouthOffset)
     }
 
+    @Test("the shear cap is a control too, adopted and remembered")
+    func shearIsAControl() throws {
+        // Stretch places the mouth on the y axis, shear on the x. Measured on 204
+        // portraits: at 25% stretch with the default 5% shear the worst mouth still
+        // finished 32.5 px off target, and every one of those pixels was horizontal.
+        // Raising shear to 20% brought the worst to 0.0. A control for one without the
+        // other cannot put a mouth where it belongs.
+        let directory = try Fixture.makeRun(
+            names: ["a"], solveOptions: SolveOptions(maxStretch: 0.25, maxShear: 0.2)
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let opened = app(directory: directory)
+        opened.openPending()
+        #expect(opened.maxShear == 0.2)
+
+        let suite = UserDefaults(
+            suiteName: "com.tsevis.prosopon.tests.shear.\(UInt64.random(in: 0...UInt64.max))"
+        )!
+        defer { UserDefaults().removePersistentDomain(forName: suite.description) }
+        let first = app(defaults: suite)
+        first.maxShear = 0.2
+        #expect(app(defaults: suite).maxShear == 0.2, "and it survives quitting")
+    }
+
+    @Test("shear of zero turns the horizontal correction off, as the run writer records it")
+    func zeroShearMeansNoHorizontalCorrection() {
+        // `correctsHorizontalMouthOffset` is not a separate switch anywhere the user can
+        // see; it is what a shear budget of nothing means. The session reads it back the
+        // same way, so the two must agree.
+        let app = app()
+        app.maxShear = 0
+        #expect(!app.solveOptions.correctsHorizontalMouthOffset)
+
+        app.maxShear = 0.2
+        #expect(app.solveOptions.correctsHorizontalMouthOffset)
+        #expect(app.solveOptions.maxShear == 0.2)
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")

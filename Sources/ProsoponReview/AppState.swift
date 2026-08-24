@@ -87,19 +87,37 @@ public final class AppState {
         }
     }
 
-    /// What Analyse would run with. Only the stretch is exposed; shear keeps its default,
-    /// being the one linear operation that can slide a mouth sideways with both eyes
-    /// pinned and so a different question from this one.
+    /// How far a face may be sheared to bring its mouth onto the target horizontally.
+    ///
+    /// The other half of placing a mouth, and useless without the first. Shear is the
+    /// only linear operation that can slide the mouth sideways while both eyes stay
+    /// pinned, so it owns the x axis exactly as stretch owns the y. Measured on 204
+    /// portraits: at 25 per cent stretch with the default 5 per cent shear the worst
+    /// mouth still finished 32.5 px off target, and every one of those pixels was
+    /// horizontal; at 20 per cent shear the worst was 0.0.
+    public var maxShear: Double = SolveOptions.default.maxShear {
+        didSet {
+            guard maxShear != oldValue else { return }
+            defaults.set(maxShear, forKey: Self.shearKey)
+        }
+    }
+
+    /// What Analyse would run with.
+    ///
+    /// A shear budget of nothing *is* "leave the horizontal offset alone" — there is no
+    /// separate switch, and the run writer records it the same way, so the two have to
+    /// agree or a reopened run reads back as something it was not.
     public var solveOptions: SolveOptions {
         SolveOptions(
             maxStretch: maxStretch,
-            maxShear: SolveOptions.default.maxShear,
-            correctsHorizontalMouthOffset: SolveOptions.default.correctsHorizontalMouthOffset
+            maxShear: maxShear,
+            correctsHorizontalMouthOffset: maxShear > 0
         )
     }
 
     static let magnificationKey = "prosopon.maxMagnification"
     static let stretchKey = "prosopon.maxStretch"
+    static let shearKey = "prosopon.maxShear"
     private let defaults: UserDefaults
 
     // MARK: The mix
@@ -141,6 +159,9 @@ public final class AppState {
         }
         if let remembered = defaults.object(forKey: Self.stretchKey) as? Double {
             maxStretch = remembered
+        }
+        if let remembered = defaults.object(forKey: Self.shearKey) as? Double {
+            maxShear = remembered
         }
         pendingDirectory = directory
         isOpening = directory != nil
@@ -254,6 +275,7 @@ public final class AppState {
             // it, and the one button on that screen quietly disagreed with both.
             maxMagnification = opened.thresholds.maxMagnification
             maxStretch = opened.options.maxStretch
+            maxShear = opened.options.maxShear
             lastSaveSummary = nil
             stage = .fineTune
         } catch {
@@ -482,6 +504,7 @@ public final class AppState {
         else { return }
         maxMagnification = manifest.thresholds.maxMagnification
         maxStretch = manifest.maxStretch
+        maxShear = manifest.maxShear
     }
 
     private func defaultOutputDirectory() -> URL? {
