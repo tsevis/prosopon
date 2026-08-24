@@ -39,7 +39,19 @@ public final class AppState {
         }
     }
 
-    public var detector = DetectorChoice.vision
+    /// Which landmark source the next run uses.
+    ///
+    /// Written down and adopted from whatever run is in play, like the three gates. It is
+    /// the setting whose loss is hardest to notice: a run made with Vision instead of
+    /// InsightFace reports every yaw as 0 degrees, raises no error, writes every tile,
+    /// and only shows up later as a mix whose "most frontal faces on top" quietly became
+    /// a proxy for pose rather than a measurement of it.
+    public var detector = DetectorChoice.vision {
+        didSet {
+            guard detector != oldValue else { return }
+            defaults.set(detector.rawValue, forKey: Self.detectorKey)
+        }
+    }
 
     /// How far a source may be enlarged onto the canvas before its tile is declined.
     ///
@@ -120,6 +132,7 @@ public final class AppState {
     static let magnificationKey = "prosopon.maxMagnification"
     static let stretchKey = "prosopon.maxStretch"
     static let shearKey = "prosopon.maxShear"
+    static let detectorKey = "prosopon.detector"
     private let defaults: UserDefaults
 
     // MARK: The mix
@@ -164,6 +177,10 @@ public final class AppState {
         }
         if let remembered = defaults.object(forKey: Self.shearKey) as? Double {
             maxShear = remembered
+        }
+        if let name = defaults.string(forKey: Self.detectorKey),
+           let remembered = DetectorChoice(rawValue: name) {
+            detector = remembered
         }
         pendingDirectory = directory
         isOpening = directory != nil
@@ -278,6 +295,9 @@ public final class AppState {
             maxMagnification = opened.thresholds.maxMagnification
             maxStretch = opened.options.maxStretch
             maxShear = opened.options.maxShear
+            // A name this build does not know is left alone rather than falling back to
+            // Vision, which is a real detector with real consequences for the result.
+            if let choice = DetectorChoice(rawValue: opened.detector) { detector = choice }
             lastSaveSummary = nil
             stage = .fineTune
         } catch {
@@ -507,6 +527,7 @@ public final class AppState {
         maxMagnification = manifest.thresholds.maxMagnification
         maxStretch = manifest.maxStretch
         maxShear = manifest.maxShear
+        if let choice = DetectorChoice(rawValue: manifest.detector) { detector = choice }
     }
 
     private func defaultOutputDirectory() -> URL? {

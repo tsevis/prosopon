@@ -327,6 +327,57 @@ struct SavedStateTests {
         #expect(manifest.maxShear == 0.20)
     }
 
+    // MARK: The detector
+
+    @Test("opening a run selects the detector that run was made with")
+    func openingARunAdoptsItsDetector() throws {
+        // The last of the four settings to travel. A run made with InsightFace reopened
+        // showing Vision, and one press of Analyse dropped every yaw to 0 degrees —
+        // which does not show up as an error anywhere, only as a mix whose pose sort
+        // silently became a proxy.
+        let directory = try Fixture.makeRun(names: ["a"], detector: "insightface")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let opened = app(directory: directory)
+        opened.openPending()
+        #expect(opened.detector == .insightface)
+    }
+
+    @Test("the detector follows a run already in the output folder")
+    func detectorFollowsTheRunAtTheOutput() throws {
+        let directory = try Fixture.makeRun(names: ["a"], detector: "insightface")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = app()
+        #expect(app.detector == .vision)
+        app.outputDirectory = directory
+        #expect(app.detector == .insightface)
+    }
+
+    @Test("the detector survives quitting the app")
+    func theDetectorIsRemembered() throws {
+        let suite = UserDefaults(
+            suiteName: "com.tsevis.prosopon.tests.detector.\(UInt64.random(in: 0...UInt64.max))"
+        )!
+        let first = app(defaults: suite)
+        first.detector = .insightface
+        #expect(app(defaults: suite).detector == .insightface)
+    }
+
+    @Test("a run naming a detector this build does not have leaves the choice alone")
+    func anUnknownDetectorIsIgnored() throws {
+        // Forwards compatibility, and the only safe answer: a name that means nothing
+        // here must not silently become Vision, which is a real detector with real
+        // consequences for what the run comes out as.
+        let directory = try Fixture.makeRun(names: ["a"], detector: "something-later")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let opened = app(directory: directory)
+        opened.detector = .insightface
+        opened.openPending()
+        #expect(opened.detector == .insightface, "left as it was, not reset")
+    }
+
     // MARK: Knowing what has been written
 
     @Test("saving clears the count of unsaved corrections")
