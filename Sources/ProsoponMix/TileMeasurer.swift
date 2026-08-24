@@ -82,7 +82,12 @@ public struct TileMeasurer: Sendable {
         )
     }
 
-    /// Mean linear colour over a rectangle, converted once to Lab, plus σ(L*).
+    /// The strip as a profile: mean linear colour per segment along its length, each
+    /// converted once to Lab, plus the whole strip's mean and σ(L*).
+    ///
+    /// Segments run along the strip's **long** axis — down a vertical seam, across a
+    /// horizontal one — because that is the direction a face changes in. A strip is 16 px
+    /// wide and 1024 long; splitting the 16 would measure nothing.
     private func signature(
         of rect: (x: Int, y: Int, width: Int, height: Int),
         in pixels: [UInt8],
@@ -94,7 +99,16 @@ public struct TileMeasurer: Sendable {
         let x1 = max(x0 + 1, clamp(Int((Double(rect.x + rect.width) * scale).rounded(.up)), imageWidth))
         let y1 = max(y0 + 1, clamp(Int((Double(rect.y + rect.height) * scale).rounded(.up)), imageWidth))
 
-        var sumRed = 0.0, sumGreen = 0.0, sumBlue = 0.0
+        let stripWidth = x1 - x0
+        let stripHeight = y1 - y0
+        let isVertical = stripHeight >= stripWidth
+        let length = isVertical ? stripHeight : stripWidth
+        let segments = max(1, min(EdgeSignature.profileLength, length))
+
+        var segmentRed = [Double](repeating: 0, count: segments)
+        var segmentGreen = [Double](repeating: 0, count: segments)
+        var segmentBlue = [Double](repeating: 0, count: segments)
+        var segmentCount = [Double](repeating: 0, count: segments)
         var sumLightness = 0.0, sumLightnessSquared = 0.0
         var count = 0.0
 
@@ -105,9 +119,14 @@ public struct TileMeasurer: Sendable {
                 let red = ColorConversion.linear(pixels[pixel])
                 let green = ColorConversion.linear(pixels[pixel + 1])
                 let blue = ColorConversion.linear(pixels[pixel + 2])
-                sumRed += red
-                sumGreen += green
-                sumBlue += blue
+
+                let along = isVertical ? row - y0 : column - x0
+                let segment = min(segments - 1, along * segments / length)
+                segmentRed[segment] += red
+                segmentGreen[segment] += green
+                segmentBlue[segment] += blue
+                segmentCount[segment] += 1
+
                 let lightness = ColorConversion.lightness(linearRed: red, green: green, blue: blue)
                 sumLightness += lightness
                 sumLightnessSquared += lightness * lightness
@@ -118,6 +137,24 @@ public struct TileMeasurer: Sendable {
         guard count > 0 else {
             return EdgeSignature(lightness: 0, greenRed: 0, blueYellow: 0, texture: 0)
         }
+
+        var profile: [LabSample] = []
+        profile.reserveCapacity(segments)
+        var sumRed = 0.0, sumGreen = 0.0, sumBlue = 0.0
+        for segment in 0..<segments {
+            let n = segmentCount[segment]
+            sumRed += segmentRed[segment]
+            sumGreen += segmentGreen[segment]
+            sumBlue += segmentBlue[segment]
+            guard n > 0 else { continue }
+            let lab = ColorConversion.lab(
+                linearRed: segmentRed[segment] / n,
+                green: segmentGreen[segment] / n,
+                blue: segmentBlue[segment] / n
+            )
+            profile.append(LabSample(lightness: lab.0, greenRed: lab.1, blueYellow: lab.2))
+        }
+
         let lab = ColorConversion.lab(
             linearRed: sumRed / count, green: sumGreen / count, blue: sumBlue / count
         )
@@ -125,7 +162,8 @@ public struct TileMeasurer: Sendable {
         let variance = max(0, sumLightnessSquared / count - meanLightness * meanLightness)
 
         return EdgeSignature(
-            lightness: lab.0, greenRed: lab.1, blueYellow: lab.2, texture: variance.squareRoot()
+            lightness: lab.0, greenRed: lab.1, blueYellow: lab.2,
+            texture: variance.squareRoot(), profile: profile
         )
     }
 

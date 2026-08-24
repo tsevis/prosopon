@@ -16,6 +16,9 @@ public enum MatchReason: String, Sendable, Codable {
     case cheekAndBridge
     /// The matcher had nothing left to choose between; taken from the seeded order.
     case randomFallback
+    /// Moved here by the refinement pass, which swapped it with a tile in another
+    /// composite because both composites came out better for it.
+    case refined
 
     public var label: String {
         switch self {
@@ -24,6 +27,7 @@ public enum MatchReason: String, Sendable, Codable {
         case .cheekSeam: "matched on the cheek seam"
         case .cheekAndBridge: "matched on the cheek seam and the nose bridge"
         case .randomFallback: "no match available — taken from the seeded order"
+        case .refined: "swapped in by the refinement pass"
         }
     }
 }
@@ -53,14 +57,28 @@ public struct CompositePlan: Sendable {
     public let seamCosts: [Seam: Double]
     /// The mouth band alone, which is the number worth reading first.
     public let mouthBandCost: Double
+    /// The largest colour difference at any single point along any of the four joins,
+    /// in ΔE.
+    ///
+    /// Reported because it is the figure that corresponds to what a viewer sees. A seam
+    /// can average well and still break visibly at one end — a jaw meeting a neck — and
+    /// an average is exactly the statistic that hides it. It is also neutral: it depends
+    /// only on the tiles chosen, not on how they were chosen, so two matchers can be
+    /// compared on it.
+    public let worstSeamDisagreement: Double
 
     public init(
-        index: Int, quadrants: [QuadrantAssignment], seamCosts: [Seam: Double], mouthBandCost: Double
+        index: Int,
+        quadrants: [QuadrantAssignment],
+        seamCosts: [Seam: Double],
+        mouthBandCost: Double,
+        worstSeamDisagreement: Double = .infinity
     ) {
         self.index = index
         self.quadrants = quadrants
         self.seamCosts = seamCosts
         self.mouthBandCost = mouthBandCost
+        self.worstSeamDisagreement = worstSeamDisagreement
     }
 
     public func tileIndex(for quadrant: Quadrant) -> Int? {

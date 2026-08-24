@@ -322,6 +322,7 @@ public enum MixRunner {
                 }) ?? nil,
                 mouthSeam: encodable(composite.mouthBandCost),
                 seams: seams,
+                worstSeam: encodable(composite.worstSeamDisagreement),
                 quadrants: composite.quadrants.map { assignment in
                     let tile = measurements[assignment.tileIndex]
                     return QuadrantRecord(

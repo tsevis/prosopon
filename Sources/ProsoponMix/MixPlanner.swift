@@ -29,7 +29,24 @@ public enum MixPlanner {
     /// would outvote a matching mouth, which is exactly backwards.
     static let mouthBandWeight = 4.0
 
+    /// The finished plan: the greedy pass, then the refinement pass over it.
     public static func plan(
+        _ measurements: [TileMeasurement],
+        seed: UInt64,
+        frontalityBasis: FrontalityBasis
+    ) -> MixPlan {
+        // Greedy commits to the first composite before it has seen what the last one
+        // needs. The second pass buys that back; see `MixRefiner`.
+        MixRefiner.refine(
+            greedyPlan(measurements, seed: seed, frontalityBasis: frontalityBasis),
+            measurements: measurements
+        )
+    }
+
+    /// The first pass alone, kept separable so what each pass decides can be told apart —
+    /// in a test, and in the manifest, where a quadrant says whether it was matched into
+    /// place or swapped there afterwards.
+    static func greedyPlan(
         _ measurements: [TileMeasurement],
         seed: UInt64,
         frontalityBasis: FrontalityBasis
@@ -196,7 +213,8 @@ public enum MixPlanner {
             index: index,
             quadrants: assignments,
             seamCosts: seamCosts(tiles),
-            mouthBandCost: mouthBandCost(tiles)
+            mouthBandCost: mouthBandCost(tiles),
+            worstSeamDisagreement: worstSeamDisagreement(tiles)
         )
     }
 
@@ -284,6 +302,23 @@ public enum MixPlanner {
             costs[seam] = a.distance(to: b)
         }
         return costs
+    }
+
+    /// The worst single point on any of the four joins, in ΔE.
+    ///
+    /// Neutral by construction: it asks only what the chosen tiles look like where they
+    /// meet, never how they came to be chosen. That is what makes it usable for comparing
+    /// one matcher against another.
+    static func worstSeamDisagreement(_ tiles: [Quadrant: TileMeasurement]) -> Double {
+        var worst = 0.0
+        for seam in Seam.allCases {
+            let (first, second) = seam.sides
+            guard let a = tiles[first.quadrant]?.edges[first],
+                  let b = tiles[second.quadrant]?.edges[second]
+            else { continue }
+            worst = max(worst, a.worstDisagreement(with: b))
+        }
+        return worst
     }
 
     /// The mouth band alone, unweighted, which is the figure to read when a mouth looks

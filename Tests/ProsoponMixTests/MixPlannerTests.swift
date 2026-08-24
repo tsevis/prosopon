@@ -184,9 +184,13 @@ struct MixPlannerTests {
         }
     }
 
-    @Test("each quadrant records what it was matched on")
+    @Test("each quadrant records what the greedy pass matched it on")
     func reasonsAreRecorded() throws {
-        let plan = MixPlanner.plan(spread(8), seed: 1, frontalityBasis: .none)
+        // The greedy pass alone. What the refinement pass then does to these is the
+        // subject of `MixRefinerTests`; a quadrant it moves is re-labelled `refined`,
+        // because crediting the first pass for the second pass's choice would make the
+        // manifest lie about how a join came to be.
+        let plan = MixPlanner.greedyPlan(spread(8), seed: 1, frontalityBasis: .none)
         let composite = try #require(plan.composites.first)
         let reasons = Dictionary(
             uniqueKeysWithValues: composite.quadrants.map { ($0.quadrant, $0.reason) }
@@ -199,6 +203,16 @@ struct MixPlannerTests {
         // A seed pick was not chosen by cost, so it has none; the rest do.
         #expect(composite.quadrants.first { $0.quadrant == .bottomLeft }?.cost == nil)
         #expect(composite.quadrants.first { $0.quadrant == .bottomRight }?.cost != nil)
+    }
+
+    @Test("the finished plan is the greedy one with the refinement pass over it")
+    func planIsGreedyThenRefined() {
+        let tiles = spread(8)
+        let expected = MixRefiner.refine(
+            MixPlanner.greedyPlan(tiles, seed: 1, frontalityBasis: .none), measurements: tiles
+        )
+        let actual = MixPlanner.plan(tiles, seed: 1, frontalityBasis: .none)
+        #expect(actual.placedTileIndices == expected.placedTileIndices)
     }
 
     @Test("every join is measured and recorded")

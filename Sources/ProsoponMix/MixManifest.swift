@@ -57,11 +57,18 @@ public struct CompositeRecord: Codable, Sendable {
     public var mouthSeam: Double?
     /// Every join, keyed by `Seam`. Lower is a closer match.
     public var seams: [String: Double]
+    /// The largest colour difference at any one point along any join, in ΔE.
+    ///
+    /// The figure that corresponds to what is actually visible: a seam can average well
+    /// and still break at one end, and an average is the statistic that hides exactly
+    /// that. Optional so a manifest written before it existed still decodes.
+    public var worstSeam: Double?
     public var quadrants: [QuadrantRecord]
 
     public init(
         index: Int, documentPath: String?, previewPath: String?, flatPath: String?,
-        mouthSeam: Double?, seams: [String: Double], quadrants: [QuadrantRecord]
+        mouthSeam: Double?, seams: [String: Double], worstSeam: Double? = nil,
+        quadrants: [QuadrantRecord]
     ) {
         self.index = index
         self.documentPath = documentPath
@@ -69,6 +76,7 @@ public struct CompositeRecord: Codable, Sendable {
         self.flatPath = flatPath
         self.mouthSeam = mouthSeam
         self.seams = seams
+        self.worstSeam = worstSeam
         self.quadrants = quadrants
     }
 }
