@@ -1,15 +1,17 @@
 import Foundation
 
-/// The three stages, left to right in the order the work actually happens.
+/// The four stages, left to right in the order the work actually happens.
 ///
 /// Reading the strip should tell somebody who has never used this what the program does:
-/// bring photographs in, measure them, fix the few it got wrong. The order is not a
-/// preference — Analyze has nothing to do until portraits are imported, and Fine Tune has
-/// nothing to show until an analysis has produced tiles.
+/// bring photographs in, measure them, fix the few it got wrong, and make the thing they
+/// were for. The order is not a preference — Analyze has nothing to do until portraits are
+/// imported, Fine Tune has nothing to show until an analysis has produced tiles, and Mix
+/// has nothing to compose until those tiles exist.
 public enum Stage: String, CaseIterable, Identifiable, Sendable {
     case importPortraits
     case analyze
     case fineTune
+    case mix
 
     public var id: String { rawValue }
 
@@ -18,6 +20,7 @@ public enum Stage: String, CaseIterable, Identifiable, Sendable {
         case .importPortraits: "Import"
         case .analyze: "Analyze"
         case .fineTune: "Fine Tune"
+        case .mix: "Mix"
         }
     }
 
@@ -26,6 +29,7 @@ public enum Stage: String, CaseIterable, Identifiable, Sendable {
         case .importPortraits: "photo.on.rectangle.angled"
         case .analyze: "viewfinder"
         case .fineTune: "slider.horizontal.below.rectangle"
+        case .mix: "square.grid.2x2"
         }
     }
 
@@ -35,13 +39,15 @@ public enum Stage: String, CaseIterable, Identifiable, Sendable {
     /// that is the number somebody is deciding about. Fine Tune counts what **needs
     /// attention** rather than the whole queue, because finding the handful the detector
     /// got wrong is the entire point of the stage; three hundred good tiles is not a
-    /// number anybody is tracking.
+    /// number anybody is tracking. Mix counts composites written, which is the pile of
+    /// finished work, not the pile still to do.
     public func badge(_ state: ChromeState) -> Int? {
         let count: Int
         switch self {
         case .importPortraits: count = state.imageCount
         case .analyze: count = state.tileCount
         case .fineTune: count = state.attentionCount
+        case .mix: count = state.compositeCount
         }
         return count > 0 ? count : nil
     }
@@ -62,6 +68,11 @@ public enum Stage: String, CaseIterable, Identifiable, Sendable {
             state.attentionCount == 0
                 ? "Correct the tiles the detector got wrong"
                 : "\(state.attentionCount) of \(state.tileCount) tiles need attention"
+        case .mix:
+            state.compositeCount == 0
+                ? "Compose the tiles into quartered portraits, four faces to a canvas"
+                : "\(state.compositeCount) composite\(state.compositeCount == 1 ? "" : "s") "
+                    + "from \(state.mixTileCount) tiles"
         }
     }
 

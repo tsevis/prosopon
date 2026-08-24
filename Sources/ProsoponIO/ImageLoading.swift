@@ -128,3 +128,30 @@ extension ImageLoading {
         return swapsAxes ? (height, width) : (width, height)
     }
 }
+
+extension ImageLoading {
+    /// Decodes `url` shrunk so its longest side is at most `maxPixelSize`.
+    ///
+    /// ImageIO does this during decode rather than after, which is what makes it worth
+    /// having: measuring the mean colour of a seam strip over a corpus of thousands of
+    /// 2048 x 2048 tiles costs a fraction of a full decode, and a mean over a strip is
+    /// not a statistic that a careful downsample disturbs.
+    ///
+    /// EXIF orientation is applied by ImageIO here, unlike in `load`, so the result is in
+    /// the same top-left, y-down space.
+    public static func thumbnail(_ url: URL, maxPixelSize: Int) throws -> CGImage {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            throw ImageLoadError.unreadable(url)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            throw ImageLoadError.noImage(url)
+        }
+        return image
+    }
+}

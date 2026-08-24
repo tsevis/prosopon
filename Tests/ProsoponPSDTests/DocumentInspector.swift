@@ -18,6 +18,11 @@ struct DocumentInspector {
         var channelLengths: [Int]
         var opacity: Int
         var blendMode: String
+        var flags: Int
+
+        /// Bit 1 of the flags means hidden, not visible.
+        var isVisible: Bool { flags & 0x02 == 0 }
+        var isLocked: Bool { flags & 0x01 != 0 }
     }
 
     struct Report {
@@ -34,6 +39,22 @@ struct DocumentInspector {
         var taggedBlockLengths: [String: Int]
         var imageDataCompression: Int
         var bytesAfterImageData: Int
+        /// The flattened composite, four 8-bit planes in R, G, B, A order.
+        ///
+        /// Decoded here rather than left to `psd-tools` because the composite is where a
+        /// positioned layer proves it landed in the right quarter of the canvas, and where
+        /// a hidden layer proves it stayed out of the result. Both are properties a Swift
+        /// test should be able to fail on without Python installed.
+        var mergedPlanes: [[UInt8]]?
+
+        /// The composite's straight RGBA at one pixel.
+        func mergedPixel(x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8, a: UInt8)? {
+            guard let mergedPlanes, mergedPlanes.count == 4 else { return nil }
+            let index = y * width + x
+            guard index >= 0, index < mergedPlanes[0].count else { return nil }
+            return (mergedPlanes[0][index], mergedPlanes[1][index],
+                    mergedPlanes[2][index], mergedPlanes[3][index])
+        }
     }
 
     enum Failure: Error, CustomStringConvertible {
@@ -156,6 +177,10 @@ struct DocumentInspector {
         cursor = sectionEnd
 
         let imageDataCompression = try uint(2)
+        let mergedPlanes = depth == 8
+            ? try? decodeMerged(compression: imageDataCompression, width: width,
+                                height: height, channels: channels, psb: psb)
+            : nil
 
         return Report(
             version: version, channels: channels, width: width, height: height,
@@ -163,8 +188,40 @@ struct DocumentInspector {
             layers: layers, layerCountField: layerCountField, taggedBlocks: taggedBlocks,
             taggedBlockLengths: taggedBlockLengths,
             imageDataCompression: imageDataCompression,
-            bytesAfterImageData: data.count - cursor
+            bytesAfterImageData: data.count - cursor,
+            mergedPlanes: mergedPlanes
         )
+    }
+
+    /// The merged composite: one marker for the section, then every channel's scanline
+    /// counts together, then every channel's rows together.
+    private mutating func decodeMerged(
+        compression: Int, width: Int, height: Int, channels: Int, psb: Bool
+    ) throws -> [[UInt8]] {
+        switch compression {
+        case 0:
+            return try (0..<channels).map { _ in Array(try bytes(width * height)) }
+        case 1:
+            let countWidth = psb ? 4 : 2
+            var counts: [Int] = []
+            for _ in 0..<(channels * height) { counts.append(try uint(countWidth)) }
+            var planes: [[UInt8]] = []
+            for channel in 0..<channels {
+                var plane: [UInt8] = []
+                plane.reserveCapacity(width * height)
+                for row in 0..<height {
+                    let coded = Array(try bytes(counts[channel * height + row]))
+                    guard let decoded = PackBits.decode(coded, expecting: width) else {
+                        throw Failure.message("row \(row) of channel \(channel) would not decode")
+                    }
+                    plane.append(contentsOf: decoded)
+                }
+                planes.append(plane)
+            }
+            return planes
+        default:
+            throw Failure.message("unsupported composite compression \(compression)")
+        }
     }
 
     private mutating func checkLanding(at end: Int, section: String, allowedSlack: Int = 1) throws {
@@ -213,7 +270,7 @@ struct DocumentInspector {
             let blendMode = try signature()
             let opacity = try uint(1)
             _ = try uint(1)                                     // clipping
-            _ = try uint(1)                                     // flags
+            let flags = try uint(1)
             _ = try uint(1)                                     // filler
 
             let extraLength = try uint(4)
@@ -251,7 +308,7 @@ struct DocumentInspector {
                 name: name, unicodeName: unicodeName,
                 rect: (top, left, bottom, right),
                 channelIDs: ids, channelLengths: lengths,
-                opacity: opacity, blendMode: blendMode
+                opacity: opacity, blendMode: blendMode, flags: flags
             ))
         }
 

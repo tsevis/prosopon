@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import ProsoponCore
+import ProsoponMix
 import ProsoponPipeline
 import ProsoponRender
 import ProsoponVision
@@ -35,6 +36,24 @@ public final class AppState {
     }
 
     public var detector = DetectorChoice.vision
+
+    // MARK: The mix
+
+    /// Where composites are written. Defaults to a `mixed` folder inside the run, so the
+    /// finished work sits beside the material it was made from.
+    public var mixOutputDirectory: URL?
+    /// Seeds the shuffle. Exposed because trying another one is the normal way to get a
+    /// different batch out of the same corpus.
+    public var mixSeed: UInt64 = 1
+    public private(set) var isMixing = false
+    public private(set) var mixProgress: MixRunner.Progress?
+    public private(set) var lastMixSummary: String?
+    /// The last mix, read back from the manifest it wrote. Nil until one has been read.
+    public private(set) var mixManifest: MixManifest?
+    /// Where that manifest was read from, which is where its preview paths are relative to.
+    public private(set) var mixDirectory: URL?
+
+    private var mixTask: Task<Void, Never>?
 
     private var analysisTask: Task<Void, Never>?
 
@@ -87,8 +106,21 @@ public final class AppState {
             editCount: session?.editCount ?? 0,
             isSaving: isSaving,
             lastSaveSummary: lastSaveSummary,
-            qaReportProblem: session?.qaReportProblem
+            qaReportProblem: session?.qaReportProblem,
+            mixTileCount: mixTileCount,
+            compositeCount: mixManifest?.composites.count ?? 0,
+            mixLeftOverCount: mixManifest?.unused.count ?? 0,
+            isMixing: isMixing,
+            mixProgress: mixProgress,
+            lastMixSummary: lastMixSummary
         )
+    }
+
+    /// Tiles a mix could actually use: the ones written, not the whole queue. A candidate
+    /// the gates declined has no file, and a correction that pushed one past a gate
+    /// removed its file and cleared its path.
+    public var mixTileCount: Int {
+        session?.entries.count { $0.outputURL != nil } ?? 0
     }
 
     /// The same reading the queue uses to put a tile at the top: something is wrong with
@@ -130,6 +162,101 @@ public final class AppState {
     }
 
     public func setSaving(_ saving: Bool) { isSaving = saving }
+
+    // MARK: Mixing
+
+    /// Composes the run's tiles into quartered portraits.
+    ///
+    /// Runs off the main actor for the same reason the analysis does: it decodes every
+    /// tile twice and writes tens of megabytes per composite, and a window that stops
+    /// redrawing while it does is a window that looks broken.
+    public func mix() {
+        guard !isMixing else { return }
+        guard let session else {
+            problem = "Open or analyse a run first \u{2014} a mix is made from aligned tiles."
+            return
+        }
+        guard mixTileCount >= 4 else {
+            problem = "A composite takes exactly four tiles, and this run has \(mixTileCount)."
+            return
+        }
+
+        let input = session.directory
+        let output = mixOutputDirectory ?? input.appendingPathComponent("mixed")
+        mixOutputDirectory = output
+
+        stage = .mix
+        isMixing = true
+        mixProgress = MixRunner.Progress(phase: .measuring, completed: 0, total: mixTileCount)
+
+        // Read off `self` here rather than inside the task, which holds it weakly.
+        let options = MixOptions(seed: mixSeed)
+        let spec = session.spec
+
+        mixTask = Task { [weak self] in
+            do {
+                let summary = try await MixRunner.run(
+                    input: input, output: output, spec: spec, options: options,
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in self?.mixProgress = progress }
+                    }
+                )
+                guard !Task.isCancelled else {
+                    await MainActor.run { self?.finishMix(directory: nil, summary: nil, problem: nil) }
+                    return
+                }
+                await MainActor.run {
+                    self?.finishMix(directory: output, summary: summary.describedOutcome, problem: nil)
+                }
+            } catch {
+                await MainActor.run {
+                    self?.finishMix(directory: nil, summary: nil, problem: "\(error)")
+                }
+            }
+        }
+    }
+
+    public func cancelMix() {
+        mixTask?.cancel()
+    }
+
+    /// Loads the manifest a mix left behind, so the stage shows what it made.
+    ///
+    /// A manifest that is there and will not decode is reported rather than swallowed: an
+    /// empty Mix stage beside a folder full of composites, with no error anywhere, is the
+    /// shape of failure this project keeps meeting.
+    public func loadMix(from directory: URL) {
+        guard MixManifest.exists(in: directory) else {
+            problem = "\(directory.lastPathComponent) has no \(MixManifest.fileName) \u{2014} "
+                + "that is what `prosopon mix` writes."
+            return
+        }
+        do {
+            mixManifest = try MixManifest.read(in: directory)
+            mixDirectory = directory
+            mixOutputDirectory = directory
+            stage = .mix
+        } catch {
+            problem = "\(error)"
+        }
+    }
+
+    private func finishMix(directory: URL?, summary: String?, problem: String?) {
+        isMixing = false
+        mixProgress = nil
+        mixTask = nil
+        if let problem { self.problem = problem }
+        lastMixSummary = summary
+        guard let directory else { return }
+        do {
+            mixManifest = try MixManifest.read(in: directory)
+            mixDirectory = directory
+        } catch {
+            mixManifest = nil
+            self.problem = "The composites were written but \(MixManifest.fileName) "
+                + "could not be read back: \(error)"
+        }
+    }
 
     // MARK: Analysing
 

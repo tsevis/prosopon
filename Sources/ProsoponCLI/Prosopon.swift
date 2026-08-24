@@ -12,7 +12,7 @@ struct Prosopon: AsyncParsableCommand {
             so no face is distorted by more than the allowed percentage.
             """,
         version: "0.1.0",
-        subcommands: [Align.self, Calibrate.self, Stack.self, QA.self],
+        subcommands: [Align.self, Calibrate.self, Stack.self, QA.self, Mix.self],
         defaultSubcommand: Align.self
     )
 }

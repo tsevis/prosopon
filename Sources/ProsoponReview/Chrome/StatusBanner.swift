@@ -56,11 +56,16 @@ public struct StatusBanner: Sendable, Equatable {
         if state.isAnalysing, let progress = state.progress {
             return notice("Analysing \(progress.completed) of \(progress.total) photographs.")
         }
+        if state.isMixing, let progress = state.mixProgress {
+            let verb = progress.phase == .measuring ? "Measuring" : "Composing"
+            return notice("\(verb) \(progress.completed) of \(progress.total).")
+        }
 
         switch stage {
         case .importPortraits: return importMessage(state)
         case .analyze: return analyzeMessage(state)
         case .fineTune: return fineTuneMessage(state)
+        case .mix: return mixMessage(state)
         }
     }
 
@@ -101,6 +106,37 @@ public struct StatusBanner: Sendable, Equatable {
             "\(state.acceptedCount) of \(state.tileCount) aligned. "
                 + "\(state.rejectedCount) could not be used and were not written."
         )
+    }
+
+    private static func mixMessage(_ state: ChromeState) -> StatusBanner {
+        if state.mixTileCount == 0 {
+            return caution("There are no aligned tiles to mix yet. A tile the gates "
+                + "declined has no file, so there is nothing to cut up.")
+        }
+        if state.possibleCompositeCount == 0 {
+            let n = state.mixTileCount
+            return caution("\(n) tile\(n == 1 ? "" : "s") is not enough for a composite. "
+                + "Each one takes exactly four, and no image is used twice.")
+        }
+        if state.compositeCount > 0 {
+            var line = "\(state.compositeCount) composite\(state.compositeCount == 1 ? "" : "s") "
+                + "written from \(state.mixTileCount) tiles."
+            if state.mixLeftOverCount > 0 {
+                let n = state.mixLeftOverCount
+                line += " \(n) tile\(n == 1 ? "" : "s") left over \u{2014} a composite needs four."
+                return caution(line)
+            }
+            return notice(line)
+        }
+
+        let possible = state.possibleCompositeCount
+        let leftOver = state.mixTileCount % 4
+        var line = "\(state.mixTileCount) tiles make \(possible) "
+            + "composite\(possible == 1 ? "" : "s"), four faces to each."
+        if leftOver > 0 {
+            line += " \(leftOver) will be left over and named in the manifest."
+        }
+        return notice(line)
     }
 
     private static func fineTuneMessage(_ state: ChromeState) -> StatusBanner {

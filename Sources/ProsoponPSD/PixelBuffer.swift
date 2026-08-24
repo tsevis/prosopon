@@ -60,33 +60,48 @@ struct PixelBuffer {
         }
     }
 
-    /// Composites `top` over the receiver, both premultiplied.
+    /// Composites `top` over the receiver at `origin`, both premultiplied.
     ///
     /// With fully covered tiles this simply replaces the accumulator, but partial
     /// coverage is reachable through `--allow-partial-coverage`, and a merged composite
     /// that disagreed with what Photoshop computes from the layers would be a confusing
     /// thing to hand someone.
-    mutating func composite(_ top: PixelBuffer) {
-        precondition(top.samples.count == samples.count, "layer sizes must match")
+    ///
+    /// The origin is what lets a quadrant layer -- 1024 x 1024 sitting at (1024, 1024) --
+    /// land in the right quarter of the flattened result. Anything falling outside the
+    /// receiver is clipped rather than wrapped.
+    mutating func composite(_ top: PixelBuffer, atX originX: Int = 0, atY originY: Int = 0) {
         let scale = UInt32(maxValue)
+        let firstRow = max(0, -originY)
+        let lastRow = min(top.height, height - originY)
+        let firstColumn = max(0, -originX)
+        let lastColumn = min(top.width, width - originX)
+        guard firstRow < lastRow, firstColumn < lastColumn else { return }
+
+        let destinationWidth = width
         samples.withUnsafeMutableBufferPointer { destination in
             top.samples.withUnsafeBufferPointer { source in
-                var index = 0
-                while index < destination.count {
-                    let sourceAlpha = UInt32(source[index + 3])
-                    if sourceAlpha == scale {
-                        destination[index] = source[index]
-                        destination[index + 1] = source[index + 1]
-                        destination[index + 2] = source[index + 2]
-                        destination[index + 3] = source[index + 3]
-                    } else if sourceAlpha > 0 {
-                        let inverse = scale - sourceAlpha
-                        for channel in 0..<4 {
-                            let under = UInt32(destination[index + channel]) * inverse / scale
-                            destination[index + channel] = UInt16(min(scale, UInt32(source[index + channel]) + under))
+                for row in firstRow..<lastRow {
+                    let sourceRow = row * top.width
+                    let destinationRow = (row + originY) * destinationWidth + originX
+                    for column in firstColumn..<lastColumn {
+                        let from = (sourceRow + column) * 4
+                        let into = (destinationRow + column) * 4
+                        let sourceAlpha = UInt32(source[from + 3])
+                        if sourceAlpha == scale {
+                            destination[into] = source[from]
+                            destination[into + 1] = source[from + 1]
+                            destination[into + 2] = source[from + 2]
+                            destination[into + 3] = source[from + 3]
+                        } else if sourceAlpha > 0 {
+                            let inverse = scale - sourceAlpha
+                            for channel in 0..<4 {
+                                let under = UInt32(destination[into + channel]) * inverse / scale
+                                destination[into + channel] =
+                                    UInt16(min(scale, UInt32(source[from + channel]) + under))
+                            }
                         }
                     }
-                    index += 4
                 }
             }
         }

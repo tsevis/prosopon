@@ -1,6 +1,7 @@
 import AppKit
 import ProsoponCore
 import ProsoponIO
+import ProsoponMix
 import ProsoponPipeline
 import ProsoponRender
 import SwiftUI
@@ -9,7 +10,7 @@ import SwiftUI
 ///
 /// The three strips are the same shape in every stage; only the panel below them changes.
 /// Every action available anywhere lives in the command bar, which is what keeps a window
-/// with three stages and a dozen actions still reading as one simple thing.
+/// with four stages and a dozen actions still reading as one simple thing.
 public struct ReviewWindow: View {
     @State private var state: AppState
     @State private var renderer: PreviewRenderer?
@@ -110,6 +111,8 @@ public struct ReviewWindow: View {
             AnalyzeView(state: state, onChooseOutput: chooseOutput)
         case .fineTune:
             fineTune
+        case .mix:
+            MixView(state: state, thumbnails: thumbnails, onChooseOutput: chooseMixOutput)
         }
     }
 
@@ -154,6 +157,10 @@ public struct ReviewWindow: View {
         case .saveCorrections: save()
         case .goToAnalyze: state.stage = .analyze
         case .goToFineTune: state.stage = .fineTune
+        case .goToMix: state.stage = .mix
+        case .chooseMixFolder: chooseMixOutput()
+        case .mix: state.mix()
+        case .cancelMix: state.cancelMix()
         }
     }
 
@@ -184,6 +191,21 @@ public struct ReviewWindow: View {
         panel.prompt = "Choose"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         state.outputDirectory = url
+    }
+
+    private func chooseMixOutput() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Where should the composites and the mix manifest be written?"
+        panel.prompt = "Choose"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        state.mixOutputDirectory = url
+        // Opening a folder that already holds a mix shows it, rather than presenting an
+        // empty stage beside a folder full of composites.
+        if MixManifest.exists(in: url) { state.loadMix(from: url) }
     }
 
     private func openRun() {

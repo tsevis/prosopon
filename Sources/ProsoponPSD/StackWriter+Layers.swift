@@ -28,7 +28,7 @@ extension StackWriter {
     /// tagged block. The contents are identical, so one routine writes both.
     static func writeLayerAndMaskSection(
         _ writer: FileWriter,
-        layers: [StackLayer],
+        layers: [PSDLayer],
         width: Int,
         height: Int,
         options: StackOptions,
@@ -83,7 +83,7 @@ extension StackWriter {
     /// once the matching channel has been streamed.
     private static func writeLayerInfoBody(
         _ writer: FileWriter,
-        layers: [StackLayer],
+        layers: [PSDLayer],
         width: Int,
         height: Int,
         options: StackOptions,
@@ -99,31 +99,28 @@ extension StackWriter {
         channelLengthOffsets.reserveCapacity(layers.count)
         for layer in layers {
             channelLengthOffsets.append(
-                try writeLayerRecord(writer, layer: layer, width: width, height: height, format: options.format)
+                try writeLayerRecord(writer, layer: layer, format: options.format)
             )
         }
 
         var accumulator = PixelBuffer.transparent(width: width, height: height, depth: options.depth)
 
         for (index, layer) in layers.enumerated() {
-            let image = try ImageLoading.load(layer.url)
-            guard image.width == width, image.height == height else {
-                throw PSDWriteError.dimensionMismatch(
-                    layer.url,
-                    expected: "\(width)x\(height)",
-                    found: "\(image.width)x\(image.height)"
-                )
+            let buffer = try pixels(for: layer, depth: options.depth)
+
+            // A hidden layer keeps its pixels but must not reach the flattened result:
+            // Photoshop computes the composite from what is visible, and a stored
+            // composite that disagreed with it would be wrong in whichever program
+            // trusted it.
+            if layer.isVisible {
+                accumulator.composite(buffer, atX: layer.frame.x, atY: layer.frame.y)
             }
-            guard let buffer = PixelBuffer.premultipliedRGBA(from: image, depth: options.depth) else {
-                throw PSDWriteError.pixelExtractionFailed(layer.url)
-            }
-            accumulator.composite(buffer)
 
             let planes = buffer.planarChannels(depth: options.depth)
             // Declared channel order is -1, 0, 1, 2; the planes come back R, G, B, A.
             for (slot, plane) in [3, 0, 1, 2].enumerated() {
                 let payload = ChannelEncoder.encode(
-                    plane: planes[plane], width: width, height: height,
+                    plane: planes[plane], width: layer.frame.width, height: layer.frame.height,
                     bytesPerSample: options.depth.bytesPerSample,
                     compression: options.compression, format: options.format
                 )
@@ -140,19 +137,66 @@ extension StackWriter {
         return accumulator.planarChannels(depth: options.depth)
     }
 
+    /// One layer's pixels, read or drawn, always at its frame's size.
+    private static func pixels(for layer: PSDLayer, depth: BitDepth) throws -> PixelBuffer {
+        let frame = layer.frame
+        guard !frame.isEmpty else { throw PSDWriteError.emptyLayerFrame(layer.name) }
+
+        switch layer.content {
+        case .image(let url):
+            let image = try ImageLoading.load(url)
+            guard image.width == frame.width, image.height == frame.height else {
+                throw PSDWriteError.dimensionMismatch(
+                    url,
+                    expected: "\(frame.width)x\(frame.height)",
+                    found: "\(image.width)x\(image.height)"
+                )
+            }
+            guard let buffer = PixelBuffer.premultipliedRGBA(from: image, depth: depth) else {
+                throw PSDWriteError.pixelExtractionFailed(url)
+            }
+            return buffer
+
+        case .croppedImage(let url, let x, let y):
+            let image = try ImageLoading.load(url)
+            let region = CGRect(x: x, y: y, width: frame.width, height: frame.height)
+            guard region.maxX <= CGFloat(image.width), region.maxY <= CGFloat(image.height),
+                  x >= 0, y >= 0
+            else {
+                throw PSDWriteError.cropOutOfBounds(
+                    url,
+                    region: "\(frame.width)x\(frame.height) at (\(x), \(y))",
+                    image: "\(image.width)x\(image.height)"
+                )
+            }
+            guard let cropped = image.cropping(to: region) else {
+                throw PSDWriteError.pixelExtractionFailed(url)
+            }
+            guard let buffer = PixelBuffer.premultipliedRGBA(from: cropped, depth: depth) else {
+                throw PSDWriteError.pixelExtractionFailed(url)
+            }
+            return buffer
+
+        case .solid(let color):
+            return .solid(width: frame.width, height: frame.height, depth: depth, color: color)
+
+        case .disc(let color):
+            return .disc(width: frame.width, height: frame.height, depth: depth, color: color)
+        }
+    }
+
     /// Returns the file offsets of the four reserved channel-length fields.
     private static func writeLayerRecord(
         _ writer: FileWriter,
-        layer: StackLayer,
-        width: Int,
-        height: Int,
+        layer: PSDLayer,
         format: DocumentFormat
     ) throws -> [UInt64] {
+        let frame = layer.frame
         var record = Data()
-        record.appendBE(Int32(0))                    // top
-        record.appendBE(Int32(0))                    // left
-        record.appendBE(Int32(height))               // bottom
-        record.appendBE(Int32(width))                // right
+        record.appendBE(Int32(frame.y))                          // top
+        record.appendBE(Int32(frame.x))                          // left
+        record.appendBE(Int32(frame.y + frame.height))           // bottom
+        record.appendBE(Int32(frame.x + frame.width))            // right
         record.appendBE(UInt16(4))
 
         var relativeOffsets: [Int] = []
@@ -166,7 +210,7 @@ extension StackWriter {
         record.appendSignature("norm")
         record.appendBE(UInt8(255))                  // opacity
         record.appendBE(UInt8(0))                    // clipping: base
-        record.appendBE(UInt8(0x08))                 // bit 3 set: Photoshop 5.0 and later
+        record.appendBE(layerFlags(layer))
         record.appendBE(UInt8(0))                    // filler
 
         var extra = Data()
@@ -189,6 +233,15 @@ extension StackWriter {
         let base = writer.offset
         try writer.write(record)
         return relativeOffsets.map { base + UInt64($0) }
+    }
+
+    /// Bit 0 transparency protected, bit 1 **hidden** rather than visible, bit 3 always
+    /// set to say the record is Photoshop 5.0 or later.
+    private static func layerFlags(_ layer: PSDLayer) -> UInt8 {
+        var flags: UInt8 = 0x08
+        if layer.isLocked { flags |= 0x01 }
+        if !layer.isVisible { flags |= 0x02 }
+        return flags
     }
 
     static func lengthData(_ value: UInt64, bytes: Int) -> Data {

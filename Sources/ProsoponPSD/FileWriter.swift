@@ -92,6 +92,8 @@ public enum PSDWriteError: Error, CustomStringConvertible {
     case dimensionTooLarge(DocumentFormat, side: Int)
     case tooManyLayers(Int)
     case pixelExtractionFailed(URL)
+    case emptyLayerFrame(String)
+    case cropOutOfBounds(URL, region: String, image: String)
 
     public var description: String {
         switch self {
@@ -112,6 +114,10 @@ public enum PSDWriteError: Error, CustomStringConvertible {
             "\(count) layers exceeds Photoshop's limit of 32767 in a single document"
         case .pixelExtractionFailed(let url):
             "could not read pixels from \(url.lastPathComponent)"
+        case .emptyLayerFrame(let name):
+            "layer '\(name)' has an empty frame; a layer must cover at least one pixel"
+        case .cropOutOfBounds(let url, let region, let image):
+            "\(url.lastPathComponent) is \(image); a \(region) region falls outside it"
         }
     }
 }

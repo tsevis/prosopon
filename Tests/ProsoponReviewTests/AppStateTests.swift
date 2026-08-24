@@ -1,5 +1,6 @@
 import Foundation
 import ProsoponCore
+import ProsoponMix
 import ProsoponPipeline
 import Testing
 @testable import ProsoponReview
@@ -199,5 +200,109 @@ struct AppStateTests {
         app.analyse()
         #expect(app.isAnalysing == false)
         #expect(app.problem != nil)
+    }
+}
+
+/// The Mix stage's join to the rest of the app.
+///
+/// The composing itself is checked in `ProsoponMixTests`, against documents on disk. What
+/// is checked here is the same thing the rest of this file checks: that the live state
+/// turns into the right numbers, because a wrong count here is a wrong toolbar everywhere.
+@MainActor
+@Suite("App state, mixing")
+struct AppStateMixTests {
+
+    private func isolatedSources() -> SourceLibrary {
+        SourceLibrary(
+            bookmarks: BookmarkStore(
+                defaults: UserDefaults(suiteName: "com.tsevis.prosopon.tests.appstate.mix")!,
+                key: "prosopon.sources.\(UInt64.random(in: 0...UInt64.max))"
+            )
+        )
+    }
+
+    private func state(directory: URL?) -> AppState {
+        let app = AppState(directory: directory, sources: isolatedSources())
+        app.openPending()
+        return app
+    }
+
+    @Test("construction reads no mix from disk either")
+    func constructionReadsNothing() throws {
+        let directory = try Fixture.makeRun(names: ["a", "b", "c", "d"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = AppState(directory: directory, sources: isolatedSources())
+        #expect(app.mixManifest == nil)
+        #expect(app.chrome.compositeCount == 0)
+    }
+
+    @Test("only tiles that were actually written can be mixed")
+    func mixCountsWrittenTiles() throws {
+        // A candidate the gates declined has no file, so it is not material for a
+        // composite however many rows the manifest has.
+        let withTiles = try Fixture.makeRun(names: ["a", "b", "c", "d"])
+        defer { try? FileManager.default.removeItem(at: withTiles) }
+        #expect(state(directory: withTiles).chrome.mixTileCount == 4)
+
+        let withoutTiles = try Fixture.makeRun(names: ["a", "b", "c", "d"], writeTiles: false)
+        defer { try? FileManager.default.removeItem(at: withoutTiles) }
+        #expect(state(directory: withoutTiles).chrome.mixTileCount == 0)
+    }
+
+    @Test("mixing fewer than four tiles says so instead of starting")
+    func tooFewTilesToMix() throws {
+        let directory = try Fixture.makeRun(names: ["a", "b", "c"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = state(directory: directory)
+        app.mix()
+        #expect(!app.isMixing)
+        #expect(app.problem?.contains("exactly four") == true)
+    }
+
+    @Test("mixing with no run open says so instead of starting")
+    func noRunToMix() {
+        let app = state(directory: nil)
+        app.mix()
+        #expect(!app.isMixing)
+        #expect(app.problem != nil)
+    }
+
+    @Test("a folder with no mix manifest in it is reported, not silently ignored")
+    func loadingSomethingThatIsNotAMix() throws {
+        let directory = try Fixture.makeRun(names: ["a"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let app = state(directory: directory)
+        app.loadMix(from: directory)
+        #expect(app.mixManifest == nil)
+        #expect(app.problem?.contains("mix-manifest.json") == true)
+    }
+
+    @Test("a mix written on disk loads back into the stage with its counts")
+    func loadingARealMix() async throws {
+        // Read back from what `MixRunner` actually wrote, not from a manifest shaped here
+        // the way the reader expects.
+        let directory = try Fixture.makeRun(names: ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("mixed")
+
+        _ = try await MixRunner.run(
+            input: directory, output: output,
+            spec: CanvasSpec.standard.scaled(toSize: 256),
+            options: MixOptions(measureSize: 256, previewSize: 128, isDryRun: false)
+        )
+
+        let app = state(directory: directory)
+        app.loadMix(from: output)
+
+        #expect(app.problem == nil)
+        #expect(app.stage == .mix)
+        #expect(app.chrome.compositeCount == 2)
+        // Nine tiles make two composites and leave one over, which is reported rather
+        // than quietly dropped.
+        #expect(app.chrome.mixLeftOverCount == 1)
+        #expect(StatusBanner.message(for: .mix, state: app.chrome).text.contains("1 tile left over"))
     }
 }

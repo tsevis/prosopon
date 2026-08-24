@@ -1,4 +1,5 @@
 import Foundation
+import ProsoponMix
 import ProsoponPipeline
 import Testing
 @testable import ProsoponReview
@@ -15,14 +16,28 @@ struct ChromeTests {
 
     @Test("the stages read left to right as the work")
     func stageOrder() {
-        #expect(Stage.allCases == [.importPortraits, .analyze, .fineTune])
-        #expect(Stage.allCases.map(\.label) == ["Import", "Analyze", "Fine Tune"])
+        #expect(Stage.allCases == [.importPortraits, .analyze, .fineTune, .mix])
+        #expect(Stage.allCases.map(\.label) == ["Import", "Analyze", "Fine Tune", "Mix"])
     }
 
     @Test("a stage with nothing in it carries no badge")
     func emptyStagesHaveNoBadge() {
         let empty = ChromeState()
         #expect(Stage.allCases.allSatisfy { $0.badge(empty) == nil })
+    }
+
+    @Test("Mix counts the composites made, not the ones still possible")
+    func mixBadgeCountsFinishedWork() {
+        // The other badges count work waiting. This one counts work done, because that is
+        // the pile somebody is looking at when they come back to the stage.
+        let planned = ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20)
+        #expect(Stage.mix.badge(planned) == nil, "nothing has been made yet")
+        #expect(Stage.mix.help(planned).contains("quartered"))
+
+        let made = ChromeState(runName: "r", tileCount: 20, acceptedCount: 20,
+                               mixTileCount: 20, compositeCount: 5)
+        #expect(Stage.mix.badge(made) == 5)
+        #expect(Stage.mix.help(made) == "5 composites from 20 tiles")
     }
 
     @Test("Fine Tune counts what needs attention, not the whole queue")
@@ -99,6 +114,12 @@ struct ChromeTests {
             ChromeState(imageCount: 9, isAnalysing: true,
                         progress: BatchRunner.Progress(completed: 3, total: 9)),
             ChromeState(runName: "r", tileCount: 4, acceptedCount: 4, isSaving: true),
+            ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20),
+            ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20,
+                        compositeCount: 5),
+            ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20,
+                        isMixing: true,
+                        mixProgress: MixRunner.Progress(phase: .measuring, completed: 1, total: 20)),
         ]
         for state in states {
             for stage in Stage.allCases {
@@ -179,6 +200,88 @@ struct ChromeTests {
             .first { $0.action == .saveCorrections }
         #expect(save?.title == "Saving\u{2026}")
         #expect(save?.isEnabled == false)
+    }
+
+    // MARK: Mix
+
+    @Test("the mix control counts the composites the tiles would make")
+    func mixNamesItsWork() {
+        // Four to a canvas and no image used twice, so twenty tiles is five composites and
+        // twenty-two is still five.
+        let ready = ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20)
+        let mix = CommandSet.commands(for: .mix, state: ready).first { $0.action == .mix }
+        #expect(mix?.title == "Mix 5 Composites")
+        #expect(mix?.isEnabled == true)
+
+        let awkward = ChromeState(runName: "r", tileCount: 22, acceptedCount: 22, mixTileCount: 22)
+        #expect(CommandSet.commands(for: .mix, state: awkward)
+            .first { $0.action == .mix }?.title == "Mix 5 Composites")
+    }
+
+    @Test("too few tiles for a single composite disables the mix and says why")
+    func notEnoughToMix() {
+        let three = ChromeState(runName: "r", tileCount: 3, acceptedCount: 3, mixTileCount: 3)
+        let mix = CommandSet.commands(for: .mix, state: three).first { $0.action == .mix }
+        #expect(mix?.isEnabled == false)
+        #expect(mix?.help.contains("exactly four") == true)
+
+        let banner = StatusBanner.message(for: .mix, state: three)
+        #expect(banner.kind == .caution)
+        #expect(banner.text.contains("not enough"))
+    }
+
+    @Test("a mix in flight can be stopped and cannot be started again")
+    func mixInFlight() {
+        let running = ChromeState(
+            runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20, isMixing: true,
+            mixProgress: MixRunner.Progress(phase: .composing, completed: 2, total: 5)
+        )
+        let commands = CommandSet.commands(for: .mix, state: running)
+        #expect(commands.first { $0.action == .cancelMix }?.isEnabled == true)
+        #expect(commands.first { $0.action == .mix }?.isEnabled == false)
+        #expect(commands.first { $0.action == .mix }?.title == "Mixing\u{2026}")
+
+        // And the progress interrupts every stage, the way an analysis does.
+        for stage in Stage.allCases {
+            #expect(StatusBanner.message(for: stage, state: running).text.contains("2 of 5"))
+        }
+    }
+
+    @Test("the banner says what a mix would make before it is made, remainder included")
+    func mixPreview() {
+        let state = ChromeState(runName: "r", tileCount: 22, acceptedCount: 22, mixTileCount: 22)
+        let banner = StatusBanner.message(for: .mix, state: state)
+        #expect(banner.text.contains("5 composites"))
+        #expect(banner.text.contains("2 will be left over"))
+    }
+
+    @Test("leftover tiles are still reported after the mix has run")
+    func leftOverAfterMixing() {
+        // Losing two photographs out of a batch without being told is not a good way to
+        // find out, so the number survives into the finished state.
+        let state = ChromeState(runName: "r", tileCount: 22, acceptedCount: 22,
+                                mixTileCount: 22, compositeCount: 5, mixLeftOverCount: 2)
+        let banner = StatusBanner.message(for: .mix, state: state)
+        #expect(banner.kind == .caution)
+        #expect(banner.text.contains("5 composites written"))
+        #expect(banner.text.contains("2 tiles left over"))
+    }
+
+    @Test("Fine Tune hands on to Mix once there is nothing left to save")
+    func fineTuneHandsOn() {
+        // Every other stage's fill points at the next step. With unsaved work outstanding
+        // that has to be Save, because closing the window would lose it; with none, the
+        // fill moves along.
+        let clean = ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20)
+        let cleanPrimary = CommandSet.commands(for: .fineTune, state: clean)
+            .first { $0.weight == .primary }
+        #expect(cleanPrimary?.action == .goToMix)
+
+        let dirty = ChromeState(runName: "r", tileCount: 20, acceptedCount: 20,
+                                editCount: 2, mixTileCount: 20)
+        let dirtyPrimary = CommandSet.commands(for: .fineTune, state: dirty)
+            .first { $0.weight == .primary }
+        #expect(dirtyPrimary?.action == .saveCorrections)
     }
 
     @Test("every command explains itself")
@@ -294,6 +397,10 @@ struct ChromeTests {
             ChromeState(runName: "r", tileCount: 5, acceptedCount: 5, isSaving: true),
             ChromeState(runName: "r", tileCount: 5, acceptedCount: 5,
                         lastSaveSummary: "2 tiles rewritten"),
+            ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 20),
+            ChromeState(runName: "r", tileCount: 20, acceptedCount: 20, mixTileCount: 22,
+                        compositeCount: 5, mixLeftOverCount: 2),
+            ChromeState(runName: "r", tileCount: 3, acceptedCount: 3, mixTileCount: 3),
         ]
         for state in states {
             for stage in Stage.allCases {

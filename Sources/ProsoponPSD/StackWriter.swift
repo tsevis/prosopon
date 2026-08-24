@@ -16,6 +16,11 @@ public enum StackWriter {
 
     private static let maximumLayers = 32_767
 
+    /// A stack of aligned tiles: every layer fills the canvas, sized from the first tile.
+    ///
+    /// Kept as its own entry point because it is the shape `prosopon stack` has always
+    /// written and the shape `scripts/validate_psd.py` checks. It builds a document and
+    /// hands it to the general path, so there is one writer underneath and not two.
     public static func write(
         layers: [StackLayer],
         to url: URL,
@@ -23,18 +28,43 @@ public enum StackWriter {
         progress: ((Int, Int) -> Void)? = nil
     ) throws -> StackSummary {
         guard !layers.isEmpty else { throw PSDWriteError.noLayers }
-        guard layers.count <= maximumLayers else { throw PSDWriteError.tooManyLayers(layers.count) }
 
         guard let size = ImageLoading.dimensions(of: layers[0].url) else {
             throw PSDWriteError.pixelExtractionFailed(layers[0].url)
         }
         let (width, height) = size
+        let frame = LayerFrame.canvas(width: width, height: height)
+
+        return try write(
+            PSDDocument(
+                width: width, height: height,
+                layers: layers.map { PSDLayer(name: $0.name, frame: frame, content: .image($0.url)) }
+            ),
+            to: url, options: options, progress: progress
+        )
+    }
+
+    /// Any document: layers carry their own frames, so a layer can occupy one quadrant of
+    /// the canvas rather than all of it.
+    public static func write(
+        _ document: PSDDocument,
+        to url: URL,
+        options: StackOptions = .default,
+        progress: ((Int, Int) -> Void)? = nil
+    ) throws -> StackSummary {
+        guard !document.layers.isEmpty else { throw PSDWriteError.noLayers }
+        guard document.layers.count <= maximumLayers else {
+            throw PSDWriteError.tooManyLayers(document.layers.count)
+        }
+
+        let width = document.width
+        let height = document.height
         guard max(width, height) <= options.format.maxDimension else {
             throw PSDWriteError.dimensionTooLarge(options.format, side: max(width, height))
         }
 
         // Bottom-to-top on disk; the caller's first entry ends up on top.
-        let ordered = Array(layers.reversed())
+        let ordered = Array(document.layers.reversed())
 
         let writer = try FileWriter(url: url, maximumBytes: options.format.maxFileSize)
         let patches = PatchList()
@@ -65,7 +95,7 @@ public enum StackWriter {
             try writer.close()
 
             return StackSummary(
-                url: url, layerCount: layers.count,
+                url: url, layerCount: document.layers.count,
                 width: width, height: height, byteCount: byteCount
             )
         } catch {

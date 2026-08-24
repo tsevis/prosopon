@@ -1,4 +1,5 @@
 import Foundation
+import ProsoponMix
 import ProsoponPipeline
 
 /// Everything the toolbar and the banner need, and nothing else.
@@ -32,6 +33,17 @@ public struct ChromeState: Sendable, Equatable {
     /// than letting the ordering it feeds quietly not work.
     public var qaReportProblem: String?
 
+    // What the mix produced
+    /// Aligned tiles a mix could use: the ones actually written, not the whole queue.
+    public var mixTileCount: Int
+    /// Composites written by the last mix, or planned by the last dry run.
+    public var compositeCount: Int
+    /// Tiles a composite could not take. A composite needs exactly four.
+    public var mixLeftOverCount: Int
+    public var isMixing: Bool
+    public var mixProgress: MixRunner.Progress?
+    public var lastMixSummary: String?
+
     public init(
         sourceCount: Int = 0,
         imageCount: Int = 0,
@@ -46,7 +58,13 @@ public struct ChromeState: Sendable, Equatable {
         editCount: Int = 0,
         isSaving: Bool = false,
         lastSaveSummary: String? = nil,
-        qaReportProblem: String? = nil
+        qaReportProblem: String? = nil,
+        mixTileCount: Int = 0,
+        compositeCount: Int = 0,
+        mixLeftOverCount: Int = 0,
+        isMixing: Bool = false,
+        mixProgress: MixRunner.Progress? = nil,
+        lastMixSummary: String? = nil
     ) {
         self.sourceCount = sourceCount
         self.imageCount = imageCount
@@ -62,12 +80,22 @@ public struct ChromeState: Sendable, Equatable {
         self.isSaving = isSaving
         self.lastSaveSummary = lastSaveSummary
         self.qaReportProblem = qaReportProblem
+        self.mixTileCount = mixTileCount
+        self.compositeCount = compositeCount
+        self.mixLeftOverCount = mixLeftOverCount
+        self.isMixing = isMixing
+        self.mixProgress = mixProgress
+        self.lastMixSummary = lastMixSummary
     }
 
     public var hasRun: Bool { runName != nil }
     public var rejectedCount: Int { max(0, tileCount - acceptedCount) }
     /// Imported photographs this run has not aligned yet.
     public var outstandingCount: Int { max(0, imageCount - alreadyAlignedCount) }
+
+    /// How many quartered portraits the tiles on hand would make. Four to a canvas,
+    /// every image used once, so the remainder simply does not make one.
+    public var possibleCompositeCount: Int { mixTileCount / 4 }
 }
 
 // MARK: - The subject chip

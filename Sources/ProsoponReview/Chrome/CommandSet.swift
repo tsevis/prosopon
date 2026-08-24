@@ -29,6 +29,10 @@ public enum ChromeAction: String, Sendable, CaseIterable {
     case saveCorrections
     case goToAnalyze
     case goToFineTune
+    case goToMix
+    case chooseMixFolder
+    case mix
+    case cancelMix
 }
 
 /// Which actions belong to which stage, in priority order, and when each is available.
@@ -43,6 +47,7 @@ public enum CommandSet {
         case .importPortraits: importCommands(state)
         case .analyze: analyzeCommands(state)
         case .fineTune: fineTuneCommands(state)
+        case .mix: mixCommands(state)
         }
     }
 
@@ -142,7 +147,11 @@ public enum CommandSet {
     // MARK: Fine Tune
 
     private static func fineTuneCommands(_ state: ChromeState) -> [Command] {
-        [
+        // Unsaved work is the one thing that must not be walked away from, so it takes the
+        // fill while there is any. With nothing outstanding the fill moves to the step
+        // that comes next, which is what every other stage does too.
+        let hasEdits = state.editCount > 0
+        return [
             Command(
                 action: .openRun,
                 title: "Open Run\u{2026}",
@@ -156,18 +165,77 @@ public enum CommandSet {
                 title: "Revert",
                 symbol: "arrow.uturn.backward",
                 weight: .quiet,
-                isEnabled: state.editCount > 0 && !state.isSaving,
+                isEnabled: hasEdits && !state.isSaving,
                 help: "Put the selected tile's landmarks back where the detector had them"
             ),
             Command(
                 action: .saveCorrections,
                 title: saveTitle(state),
                 symbol: "square.and.arrow.down",
-                weight: .primary,
-                isEnabled: state.editCount > 0 && !state.isSaving,
+                weight: hasEdits ? .primary : .secondary,
+                isEnabled: hasEdits && !state.isSaving,
                 help: "Re-render only the tiles that changed, and update the manifest in place"
             ),
+            Command(
+                action: .goToMix,
+                title: "Mix",
+                symbol: "square.grid.2x2",
+                weight: hasEdits ? .secondary : .primary,
+                isEnabled: state.tileCount > 0 && !state.isSaving && !state.isMixing,
+                help: "Compose these tiles into quartered portraits, four faces to a canvas"
+            ),
         ]
+    }
+
+    // MARK: Mix
+
+    private static func mixCommands(_ state: ChromeState) -> [Command] {
+        [
+            Command(
+                action: .cancelMix,
+                title: "Stop",
+                symbol: "stop.circle",
+                weight: .quiet,
+                isEnabled: state.isMixing,
+                help: "Stop after the composites already in flight. What was written stays."
+            ),
+            Command(
+                action: .chooseMixFolder,
+                title: "Output Folder\u{2026}",
+                symbol: "folder",
+                weight: .quiet,
+                isEnabled: !state.isMixing,
+                help: "Where the composites, their previews and the mix manifest are written"
+            ),
+            Command(
+                action: .mix,
+                title: mixTitle(state),
+                symbol: "square.grid.2x2",
+                weight: .primary,
+                isEnabled: state.possibleCompositeCount > 0 && !state.isMixing,
+                help: mixHelp(state)
+            ),
+        ]
+    }
+
+    private static func mixTitle(_ state: ChromeState) -> String {
+        if state.isMixing { return "Mixing\u{2026}" }
+        let possible = state.possibleCompositeCount
+        guard possible > 0 else { return "Mix" }
+        if state.compositeCount > 0 { return "Mix Again" }
+        return "Mix \(possible) Composite\(possible == 1 ? "" : "s")"
+    }
+
+    private static func mixHelp(_ state: ChromeState) -> String {
+        if state.mixTileCount == 0 {
+            return "Align some portraits first \u{2014} a mix is made from written tiles"
+        }
+        if state.possibleCompositeCount == 0 {
+            return "\(state.mixTileCount) tile\(state.mixTileCount == 1 ? "" : "s") is not enough; "
+                + "a composite needs exactly four"
+        }
+        return "Four faces to a canvas, each image used once. The mouth seam is matched "
+            + "first, then the cheeks."
     }
 
     private static func saveTitle(_ state: ChromeState) -> String {

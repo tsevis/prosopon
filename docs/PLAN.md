@@ -330,7 +330,7 @@ milestone rather than a flag on the existing writer.
 
 ## 11. Status
 
-Built and tested (**250 tests green**, `swift test`, about five minutes):
+Built and tested (**309 tests green**, `swift test`, about five minutes):
 
 - `ProsoponCore` — geometry, the two-stage solver, coverage, quality gates. No UI, no I/O,
   no Core Graphics; the maths is testable in isolation and is exercised by a randomised
@@ -352,8 +352,10 @@ Built and tested (**250 tests green**, `swift test`, about five minutes):
   and the app.
 - `ProsoponReview` — the three stages, the import sources, the review session, live
   preview rendering, and the correction writer, with the SwiftUI views on top of them.
-- `prosopon align`, `prosopon calibrate`, `prosopon stack` and `prosopon qa`, with a JSON
-  manifest and sortable CSVs, plus the `prosopon-review` app.
+- `ProsoponMix` — seam measurement in Lab, the quadrant assignment, and what a mix run
+  writes. See §14.
+- `prosopon align`, `prosopon calibrate`, `prosopon stack`, `prosopon qa` and
+  `prosopon mix`, with a JSON manifest and sortable CSVs, plus the `prosopon-review` app.
 
 Verified on a real portrait: coverage 100 %, mouth error **0.00 px**, stretch −3.39 %,
 and the overlay's discs sit on the eyes and mouth exactly as in the reference images.
@@ -371,8 +373,8 @@ and staying flat rather than growing with the layer count.
 
 ## 12. The app
 
-Reads left to right as the work — **Import**, **Analyze**, **Fine Tune** — with a count on
-each stage, a chip naming what is loaded and how far along it is, actions right-aligned
+Reads left to right as the work — **Import**, **Analyze**, **Fine Tune**, **Mix** — with a
+count on each stage, a chip naming what is loaded and how far along it is, actions right-aligned
 with exactly one filled control, and one line of plain language under the toolbar. The
 interaction model is borrowed from CrewListr Pro on this machine
 (`crewlisterpromac/Sources/CrewListrProMac/UI/AppChrome.swift`), not the code.
@@ -516,3 +518,165 @@ that faces would cluster below the target, and the likely reason is definitional
 canthus midpoint sits differently from a pupil, so the ratio is not comparable to
 textbook figures. It is one face. Run `prosopon calibrate` over the real corpus before
 drawing any conclusion about how often the 5 % cap will bite.
+
+
+---
+
+## 14. Mixing — the quartered portrait
+
+The first thing in this project that makes the artwork rather than the raw material for
+it. Modelled on a Photoshop document built by hand: four portraits, one per quadrant, plus
+three hidden fill layers marking the two eyes and the mouth, over a white background.
+
+### The geometry, and the join it forces
+
+Seams at `x = 1024` and `y = 1024`. On the fixed grid that puts:
+
+| | |
+|---|---|
+| left eye (512, 512) | dead centre of the top-left quadrant |
+| right eye (1536, 512) | dead centre of the top-right |
+| mouth (1024, 1664) | **exactly on the vertical seam**, 640 px below the horizontal one |
+
+So the two bottom quadrants carry **half a mouth each, from two different people**. That is
+the hardest join in the picture, and it is only possible because both mouths are on the
+same pixels by construction — which is the whole reason §2's coordinates are not
+negotiable. Moving the seam off the mouth to make the join easier would be discarding the
+only thing that makes it work. `QuadrantGeometryTests` asserts it rather than a comment
+claiming it.
+
+### Assignment: measured, not shuffled
+
+Each tile is measured along the eight strips it could present to a neighbour — there are
+eight rather than four because which pixels a tile shows depends on where it is placed.
+A strip's signature is the mean colour of a 16 px band, averaged in **linear light**
+(a physical mixture, not an average of gamma-encoded numbers) and converted once to
+**CIE Lab** (equal distances are roughly equal differences to the eye), plus σ(L\*) as a
+small texture term at weight 0.5.
+
+Measured at half resolution by default. A strip mean survives a careful downsample — it is
+a mean — and at 2,560 tiles that is the difference between seconds and minutes.
+
+Then, per composite:
+
+1. **The most frontal half of the corpus is reserved for the top quadrants.** Splitting the
+   pool by frontality *before* matching satisfies "prefer frontal faces where the eyes are"
+   exactly. Expressed instead as a term in the cost function, a strong tone match would
+   sometimes outvote it.
+2. **The mouth seam first.** Its band (± 192 px) is weighted **4×** the rest of the strip,
+   because the strip runs the whole 1024 px bottom half and the mouth is a few hundred of
+   them; unweighted, a matching backdrop outvotes a matching mouth.
+3. **Then the cheeks**, and the second top pick is scored on the nose bridge as well.
+
+Greedy, O(N²) in cheap vector distances — about 6.5 M of them at N = 2,560, nothing beside
+the decodes. An optimal assignment is not worth its cost here, and the costs visibly rise
+through a batch as the easy matches are spent: on the twenty-portrait set the mouth-seam
+distance went 5.3, 3.5, 4.8, 10.2, 11.9.
+
+**Frontality is yaw when the detector reports a usable one.** Vision quantises to 45°
+steps, so a Vision run falls back to the quality score and the manifest records
+`frontalityBasis` plus a sentence saying which — a manifest that claimed to be pose-sorted
+when it was not would look exactly like one that was.
+
+**Seeded** with SplitMix64, since Swift's own generator cannot be. The seed drives the
+shuffle of both pools and every fallback pick; ties inside the cost function break on
+filename, so a run is reproducible down to the byte.
+
+**Fallback rather than dropping.** A tile with no measurable strips, or a pool that empties
+early, produces a pick taken from the seeded order and recorded as `randomFallback`. Every
+image is used exactly once whatever happens.
+
+**The remainder is left out and named.** `N mod 4` tiles cannot make a composite; they are
+listed in the manifest with the reason and counted in the summary. A final composite with a
+white quadrant is not the artwork, and dropping four photographs silently is how somebody
+finds out months later.
+
+### Positioned layers, not masks
+
+The reference document is four full-canvas layers each masked down to one quadrant, which
+is what lets a mask be slid afterwards to reveal more of a face. Reproducing it faithfully
+would mean implementing the layer-mask section — bounds, default colour, flags, and the
+mask's own channel data.
+
+**Decided against, knowingly.** A PSD layer record already carries its own bounding
+rectangle, so a quadrant is a 1024 × 1024 layer at its own offset and no mask code has to
+exist. Layer pixels drop from ~64 MB to ~16 MB; a composite lands at **25 MB** measured.
+The cost is the mask's whole point: a seam can no longer be slid in Photoshop, and the
+document has to be regenerated with another seed instead. `StackWriter+Layers.swift` still
+writes `no layer mask` into every record, as it always has.
+
+Two consequences worth writing down:
+
+- **`.croppedImage` content.** The tile on disk is the whole 2048 face and the layer wants
+  a quarter of it, so the crop happens as the layer is written rather than through
+  intermediate files. A crop taken from the wrong quarter, or upside down, produces a
+  document that opens perfectly happily and is meaningless — hence a test that reads the
+  flattened composite back and checks each quarter is the colour it started as.
+- **Hidden layers must not reach the merged composite.** Photoshop computes it from what is
+  visible; a stored composite that disagreed would be wrong in whatever opened the file.
+
+The three markers become hidden olive discs 24 px across, drawn with alpha. Same appearance
+as a fill revealed through a one-dot mask, a few kilobytes, no mask section.
+
+### One document per composite
+
+Many composites in one document would stack hundreds of quadrant layers on the same canvas:
+only the top four visible, the merged composite meaningless, and no way to open one piece
+without the other 639. There is no arrangement in which a multi-composite document is the
+artwork. `.psd` rather than `stack`'s `.psb`, since 25 MB is nowhere near the 2 GB ceiling
+and `.psd` is what everything else opens.
+
+A flattened 512 px preview is written beside each document — the artwork is a picture and
+whether a mouth joins is a question only looking can answer — and `--flat png|tiff` writes
+a full-size one when the layers are never going to be touched.
+
+### Measured on twenty portraits
+
+`/Users/tsevis/01CLIENTI/a client project/LAB 3/The PEOPLE for Prosopon`, 20 photographs, five
+subjects at four frames each. All 20 cleared the gates at `--max-magnification 8` (median
+magnification 2.47), giving exactly five composites and no remainder. The whole mix — 20
+tiles measured, five documents and five previews written — took **1.0 s** and 120 MB.
+Every quadrant of every document decodes pixel-identical against its source tile under
+`psd-tools`, the markers are hidden at the right coordinates, and the flattened composite
+is the four quadrants assembled.
+
+### One photograph per composite
+
+Two faces found in one photograph are two tiles with the same `sourcePath`, and quartering
+a portrait with itself is not the piece. A candidate whose source is already in the
+composite is refused outright; if refusing would leave nothing, the constraint gives way
+and the quadrant is recorded as `randomFallback`, because every tile is still used exactly
+once.
+
+### The measured failure: tone matching finds the same face
+
+**On the twenty-portrait set every composite repeats a sitter, and two of the five take
+three quadrants from one person.** The set is five subjects at four frames each, and each
+frame is its own file — so the source guard above never fires.
+
+The cause is not a bug, it is the objective working exactly as specified. The matcher is
+asked to find the strip that most closely matches the one beside it, and nothing matches a
+face's tone as well as the same face. Given four frames of one sitter in the pool, the best
+mouth partner for one of them is almost always another of them.
+
+Nothing in the current measurement can tell "the same person again" from "a very good
+match", because at the seam those are the same thing. Two ways out, neither built:
+
+- **Identity.** `w600k_r50.onnx` sits in `~/.insightface/models/buffalo_l` beside the
+  detectors already in use. One embedding per tile and a cosine-distance floor between the
+  four quadrants would settle it properly, and would also catch the same sitter appearing
+  under a different filename.
+- **Agreement across all eight strips.** Two frames of one sitter match on *every* strip at
+  once; two different faces that happen to meet at the mouth do not also meet at the nose
+  bridge and both cheeks. That signal is already computed and currently thrown away. It
+  needs a threshold, which means tuning, which means a corpus larger than five people.
+
+On a corpus of distinct identities — the 2,560-image one this is aimed at — the situation
+does not arise. On any corpus with several frames per sitter it does, and it is visible
+immediately.
+
+### Also not finished
+
+- **Nothing measures the join itself.** The cost is a distance between two strip means, not
+  a reading of the finished seam. A per-composite score taken across the assembled canvas
+  would be a better sort key for "which of these 640 went wrong".

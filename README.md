@@ -1,7 +1,8 @@
 # Prosopon
 
 Aligns hundreds of portrait photographs onto one fixed 2048 × 2048 face grid, so that
-fragments of different faces can be cut up and recombined into mosaics.
+fragments of different faces can be cut up and recombined into mosaics — and then
+composes them into quartered portraits, four faces to a canvas.
 
 ```
 left eye   (512, 512)      right eye  (1536, 512)      mouth  (1024, 1664)
@@ -55,6 +56,12 @@ Collect the tiles into one layered Photoshop document, first file on top:
 .build/release/prosopon stack ~/aligned -o ~/faces.psb
 ```
 
+Compose them into quartered portraits — four faces to a canvas, each image used once:
+
+```bash
+.build/release/prosopon mix ~/aligned -o ~/mixed
+```
+
 Each align run writes `manifest.json` (landmarks, transforms, metrics — enough to re-render at
 any size without re-detecting) and `report.csv` (the same data, sortable by score).
 
@@ -99,6 +106,105 @@ compresses, so **a few hundred layers passes the 2 GB ceiling a `.psd` can addre
 hence the `.psb` default. Measured on an M1 Ultra: 120 layers in 18 s producing a
 1.3 GB document, with resident memory settling at about 1 GB and staying there rather
 than growing with the layer count. Set `PROSOPON_MEMORY=1` to see that figure live.
+
+## Mixing — the quartered portrait
+
+`mix` is what the alignment was for. Each output is one 2048 × 2048 canvas cut into four
+1024 × 1024 quadrants, every quadrant from a different photograph. N tiles in, N ÷ 4
+documents out, and **no image appears twice anywhere in the batch**.
+
+The seams fall at x = 1024 and y = 1024. On the fixed grid that puts the left eye
+(512, 512) dead centre of the top-left quadrant, the right eye (1536, 512) dead centre of
+the top-right — and the mouth (1024, 1664) **exactly on the vertical seam**. So the two
+bottom quadrants carry half a mouth each, from two different people. It is the hardest
+join in the picture and it only works because both mouths are on the same pixels by
+construction.
+
+### How the four are chosen
+
+Not by shuffling and hoping. Every tile is measured along the eight strips it could
+present to a neighbour: the mean colour of a 16 px strip, taken in **linear light** and
+compared in **CIE Lab**, plus the standard deviation of L\* as a texture term. Then, per
+composite:
+
+1. **The most frontal half of the corpus is reserved for the top quadrants**, where the
+   eyes are. Splitting the pool by frontality before any matching satisfies that exactly,
+   rather than leaving it as a preference a strong tone match could outvote.
+2. **The mouth seam is matched first**, with the mouth band (± 192 px of the mouth line)
+   weighted four times the rest of the strip. The strip runs the whole bottom half — chin,
+   neck, shoulder — so left unweighted, a matching backdrop would outvote a matching mouth.
+3. **Then the cheeks**, each top quadrant chosen to meet the bottom one below it; the
+   second also has to meet the first across the nose bridge, so it is scored on both.
+
+Greedy and deliberately so — an optimal assignment over hundreds of tiles is not worth its
+cost, and a good first choice on the hardest seam is worth more than a balanced compromise
+across all four. The costs rise through a batch as the easy matches are spent.
+
+**Frontality comes from head yaw when the detector reports a usable one.** Vision does not
+— it quantises to 45° steps — so a Vision run falls back to the quality score and the
+manifest says so in words rather than claiming to be pose-sorted.
+
+**The shuffle is seeded** (`--seed`, default 1), so a run reproduces and another seed gives
+another batch from the same corpus. When N is not a multiple of four the remainder is left
+out, named in the manifest and counted in the summary; a composite with a white quadrant is
+not the artwork, and dropping four photographs in silence is not acceptable either.
+
+Two faces found in **one photograph** are two tiles with the same source, and a candidate
+whose source is already in the composite is refused: quartering a portrait with itself is
+not the piece.
+
+`mix-manifest.json` and `mix-report.csv` record which image went where, what each quadrant
+was matched on, what it scored, and what all four seams came out at — so a bad join is
+traced rather than guessed at.
+
+### One thing tone matching cannot see
+
+Nothing matches a face's tone as well as **the same face**. On a corpus holding several
+frames of one sitter, the best mouth partner for a frame is usually another frame of the
+same person — measured on a twenty-portrait set of five sitters at four frames each, every
+composite repeated a sitter and two took three quadrants from one person. The frames are
+separate files, so the same-source guard never fires.
+
+This is the objective working as specified rather than a bug: at the seam, "the same
+person again" and "a very good match" are the same measurement. Telling them apart needs
+either a face embedding (`w600k_r50.onnx` is in the same `buffalo_l` folder as the
+detectors) or a rule about matching on *all eight* strips at once. Neither is built. On a
+corpus of distinct identities the situation does not arise.
+
+### Positioned layers, no masks
+
+Each quadrant is a **1024 × 1024 layer at its own offset**, cropped from the aligned tile
+as it is written. A PSD layer record already carries its own bounding rectangle, so this
+needs no layer-mask code at all, and a composite comes out around **25 MB** instead of the
+80 MB four full-canvas layers would cost.
+
+What it gives up is real and was chosen knowingly: a seam **cannot be slid in Photoshop
+afterwards** to reveal more of a face. Regenerate with another `--seed` instead.
+
+The three landmark markers are reproduced as hidden olive discs at the two eyes and the
+mouth, which is what lets a join be checked by eye, and a white locked Background sits
+under everything.
+
+### `mix` options
+
+| Flag | Default | |
+|---|---|---|
+| `--seed` | `1` | seeds the shuffle and every fallback pick |
+| `--seam-width` | `16` | width of the strip tones are matched on, in canvas pixels |
+| `--mouth-band` | `384` | height of the mouth band, centred on the mouth target |
+| `--measure-size` | `1024` | resolution tiles are decoded at for measurement |
+| `--format` | `psd` | a composite is far inside the 2 GB ceiling; `psb` also available |
+| `--bit-depth` | `8` | 8 or 16 |
+| `--compression` | `rle` | `rle` or `raw` |
+| `--no-markers` | off | leave out the three hidden landmark markers |
+| `--no-background` | off | leave out the white background layer |
+| `--preview-size` | `512` | flattened preview beside each document; `0` for none |
+| `--flat` | none | also write a full-size flattened `png` or `tiff` |
+| `--limit` | none | write only the first N composites; the plan still covers everything |
+| `--dry-run` | off | plan and write the manifest, write no documents |
+
+A composite is about 25 MB, so 640 of them is roughly 16 GB. `--dry-run` reads the whole
+plan first, and `--limit` writes a few to look at.
 
 ## How the solve works
 
@@ -224,8 +330,8 @@ displacement, because the number would be meaningless and the fix is different.
 
 ## The app
 
-`prosopon-review` reads left to right as the work: **Import**, **Analyze**, **Fine Tune**.
-It can start from an empty window or from a run `align` already wrote.
+`prosopon-review` reads left to right as the work: **Import**, **Analyze**, **Fine Tune**,
+**Mix**. It can start from an empty window or from a run `align` already wrote.
 
 **Import.** One panel takes folders and individual photographs together, with multiple
 selection, and a drag onto the window accepts the same mixture. Each folder carries its
@@ -264,6 +370,12 @@ Saving re-renders only the edited tiles and updates the manifest in place, so a 
 `stack` or `qa` picks the corrections up with no further step. A correction that pushes a
 tile past a gate removes its file and clears its path, rather than leaving a stale tile
 for the next stack run to swallow.
+
+**Mix** composes the run's tiles into quartered portraits and shows what came out: a grid
+of flattened previews with each composite's four sources and its seam distances underneath,
+because whether a mouth joins is a question only looking can answer. The seed is a control
+here rather than a flag, since trying another one is the normal way to get a different batch
+from the same corpus.
 
 | Key | |
 |---|---|
@@ -309,9 +421,10 @@ is really registering is error.
 | `ProsoponInsight` | InsightFace `buffalo_l` through ONNX Runtime and CoreML |
 | `ProsoponPSD` | layered `.psd` / `.psb` writer |
 | `ProsoponQA` | streaming mean and deviation, per-tile registration against consensus |
+| `ProsoponMix` | seam measurement, the quadrant assignment, and what a mix run writes |
 | `ProsoponPipeline` | load → detect → solve → gate → render, the batch fan-out, and what a run writes. Shared by the CLI and the app, so a run folder is the same folder whichever made it |
 | `ProsoponReview` | the app: stages, import sources, the review session, the correction writer |
-| `ProsoponCLI` | `align`, `calibrate`, `qa`, `stack` |
+| `ProsoponCLI` | `align`, `calibrate`, `qa`, `stack`, `mix` |
 
 See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is next.
 
@@ -321,11 +434,19 @@ See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is ne
 swift test
 ```
 
-250 tests, about five minutes. Covers the transform algebra, the solver invariants (including a randomised sweep
+309 tests, about five minutes. Covers the transform algebra, the solver invariants (including a randomised sweep
 asserting the eyes never move), polygon clipping for coverage, a pixel-level check that
 landmarks land on their targets in the rendered output without mirroring or flipping,
 PackBits round-trips, and a structural reader that walks every declared section length
 in a written document and checks it lands where the content actually ends.
+
+The mix is covered at both ends. The assignment is a pure function over measurements, so
+the invariants are checked over a whole batch rather than one composite: every tile placed
+exactly once, the remainder named, the same seed reproducing and a different one not, the
+most frontal half landing on top, and the mouth band outvoting the rest of the seam when
+they disagree. The composing is checked against documents on disk — that a quadrant layer
+declares the right rectangle, that a cropped layer takes the quarter it sits on rather than
+a flipped or mirrored one, and that a hidden marker stays out of the flattened composite.
 
 The app is covered without opening a window. Every string in the toolbar and every dimmed
 control is a function of one flat value, so the wording, the enablement and the ordering
@@ -346,7 +467,12 @@ reader agrees — that channel order, PackBits coding, alpha handling and the me
 composite are what Photoshop expects rather than merely what we assumed:
 
 ```bash
-python3 scripts/validate_psd.py ~/faces.psb ~/aligned/*.png
+python3 scripts/validate_psd.py ~/faces.psb ~/aligned/*.png     # a stack
+python3 scripts/validate_psd.py --mix ~/mixed/mix-manifest.json  # a whole mix run
 ```
 
-It decodes every layer with `psd-tools` and compares it against the source tile.
+It decodes every layer with `psd-tools` and compares it against the source tile. In `--mix`
+mode it walks every composite the manifest names: each quadrant layer's rectangle, its
+pixels against the matching quarter of the tile it came from, that the three markers are
+hidden, that the flattened composite is the four quadrants assembled, and that no
+photograph appears twice across the batch.
