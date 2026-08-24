@@ -26,7 +26,10 @@ public struct ChromeState: Sendable, Equatable {
     public var progress: BatchRunner.Progress?
 
     // What the reviewer has done since
+    /// Changed and not yet written. Falls to zero on a save.
     public var editCount: Int
+    /// Differs from what the detector found, saved or not — what Revert can undo.
+    public var correctedCount: Int
     public var isSaving: Bool
     public var lastSaveSummary: String?
     /// A QA report that was found but could not be read. Worth saying out loud rather
@@ -56,6 +59,7 @@ public struct ChromeState: Sendable, Equatable {
         isAnalysing: Bool = false,
         progress: BatchRunner.Progress? = nil,
         editCount: Int = 0,
+        correctedCount: Int = 0,
         isSaving: Bool = false,
         lastSaveSummary: String? = nil,
         qaReportProblem: String? = nil,
@@ -77,6 +81,7 @@ public struct ChromeState: Sendable, Equatable {
         self.isAnalysing = isAnalysing
         self.progress = progress
         self.editCount = editCount
+        self.correctedCount = correctedCount
         self.isSaving = isSaving
         self.lastSaveSummary = lastSaveSummary
         self.qaReportProblem = qaReportProblem

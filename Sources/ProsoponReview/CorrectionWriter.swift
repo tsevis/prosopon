@@ -15,6 +15,9 @@ public enum CorrectionWriter {
         public var nowAccepted: Int
         public var nowRejected: Int
         public var failures: [String]
+        /// The landmarks now on disk, by entry id, so the session can stop calling them
+        /// unsaved. Only tiles this call actually dealt with are in here.
+        public var written: [String: FaceLandmarks] = [:]
 
         public var describedOutcome: String {
             var parts = ["\(rewritten) tile\(rewritten == 1 ? "" : "s") rewritten"]
@@ -31,7 +34,8 @@ public enum CorrectionWriter {
         spec: CanvasSpec,
         options: SolveOptions,
         resampler: Resampler,
-        format: ImageFormat = .png
+        format: ImageFormat = .png,
+        depth: OutputDepth = .sixteen
     ) throws -> Summary {
         let edited = entries.filter(\.isEdited)
         guard !edited.isEmpty else {
@@ -56,12 +60,16 @@ public enum CorrectionWriter {
                     if quality.isAccepted {
                         let image = try ImageLoading.load(entry.sourceURL)
                         let tile = try renderer.render(image, using: alignment.transform)
-                        try ImageWriting.write(tile, to: destination, format: format)
+                        // At the run's depth, not at the default. Re-rendering an 8-bit
+                        // run's tile at 16 leaves a 24 MB file beside its 6 MB neighbours
+                        // and stores nothing the source ever carried.
+                        try ImageWriting.write(tile, to: destination, format: format, depth: depth)
                         summary.rewritten += 1
                     } else if FileManager.default.fileExists(atPath: destination.path) {
                         try FileManager.default.removeItem(at: destination)
                         summary.nowRejected += 1
                     }
+                    summary.written[entry.id] = entry.landmarks
                 }
             } catch {
                 summary.failures.append("\(entry.name): \(error)")

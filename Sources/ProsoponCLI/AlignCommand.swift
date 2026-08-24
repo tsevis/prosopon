@@ -59,6 +59,11 @@ struct Align: AsyncParsableCommand {
             }
         }
 
+        let thresholds = QualityThresholds(
+            requiresFullCoverage: !allowPartialCoverage,
+            maxMagnification: maxMagnification,
+            maxYawDegrees: maxYaw
+        )
         let spec = CanvasSpec.standard
         // Built once and shared: compiling the shader and creating the queue is a
         // per-process cost, not a per-image one.
@@ -66,11 +71,7 @@ struct Align: AsyncParsableCommand {
         let pipeline = Pipeline(
             spec: spec,
             solveOptions: shared.solveOptions,
-            thresholds: QualityThresholds(
-                requiresFullCoverage: !allowPartialCoverage,
-                maxMagnification: maxMagnification,
-                maxYawDegrees: maxYaw
-            ),
+            thresholds: thresholds,
             selection: shared.faces,
             detector: try shared.makeDetector(),
             renderer: renderer,
@@ -104,6 +105,8 @@ struct Align: AsyncParsableCommand {
             try RunWriter.write(
                 tiles, to: outputDirectory, spec: spec,
                 solveOptions: shared.solveOptions,
+                thresholds: thresholds,
+                bitDepth: depth.rawValue,
                 detector: shared.detector.rawValue,
                 resampler: resampler.rawValue
             )

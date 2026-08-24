@@ -43,6 +43,46 @@ public struct QualityThresholds: Hashable, Sendable, Codable {
     public static let `default` = QualityThresholds()
 }
 
+// MARK: - Serialising a threshold that is switched off
+
+/// A gate that is off is `.infinity`, and JSON has no infinity — `JSONEncoder` throws
+/// rather than inventing one. So an inactive gate is written as **absent**, which is also
+/// how it reads: a manifest with no `maxYawDegrees` in it did not gate on yaw.
+///
+/// This matters because the thresholds a run was made with now travel in its manifest.
+/// Without them the review app re-solves every tile against the built-in defaults, and a
+/// run aligned with `--max-magnification 8` reopens with most of its tiles marked
+/// rejected — tiles whose files are sitting right there beside the manifest.
+extension QualityThresholds {
+    private enum CodingKeys: String, CodingKey {
+        case requiresFullCoverage, maxMagnification, maxMouthErrorPixels, maxYawDegrees
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            requiresFullCoverage: try container.decodeIfPresent(
+                Bool.self, forKey: .requiresFullCoverage) ?? true,
+            maxMagnification: try container.decodeIfPresent(
+                Double.self, forKey: .maxMagnification) ?? .infinity,
+            maxMouthErrorPixels: try container.decodeIfPresent(
+                Double.self, forKey: .maxMouthErrorPixels) ?? .infinity,
+            maxYawDegrees: try container.decodeIfPresent(
+                Double.self, forKey: .maxYawDegrees) ?? .infinity
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requiresFullCoverage, forKey: .requiresFullCoverage)
+        try container.encodeIfPresent(finite(maxMagnification), forKey: .maxMagnification)
+        try container.encodeIfPresent(finite(maxMouthErrorPixels), forKey: .maxMouthErrorPixels)
+        try container.encodeIfPresent(finite(maxYawDegrees), forKey: .maxYawDegrees)
+    }
+
+    private func finite(_ value: Double) -> Double? { value.isFinite ? value : nil }
+}
+
 public enum RejectionReason: String, Hashable, Sendable, Codable, CaseIterable {
     case incompleteCoverage
     case excessiveMagnification

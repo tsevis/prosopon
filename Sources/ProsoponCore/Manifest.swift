@@ -64,13 +64,26 @@ public struct RunManifest: Codable, Sendable {
     public var targets: [String: Point2D]
     public var maxStretch: Double
     public var maxShear: Double
+    /// The gates this run was made with.
+    ///
+    /// Recorded because they are not recoverable from the result: a tile that was
+    /// accepted at `--max-magnification 8` looks identical to one accepted at the default
+    /// 2.0 until somebody re-solves it. Without this the review app re-solved every tile
+    /// against the defaults and a run reopened with most of its tiles marked rejected,
+    /// their files sitting untouched beside the manifest.
+    public var thresholds: QualityThresholds
+    /// Bits per channel the tiles were written at, so a correction re-renders at the
+    /// depth the rest of the run is in rather than at four times the size.
+    public var bitDepth: Int
     public var detector: String
     public var resampler: String
     public var tiles: [TileRecord]
 
     public init(
         canvasSize: Double, gridStep: Double, targets: [String: Point2D],
-        maxStretch: Double, maxShear: Double, detector: String, resampler: String,
+        maxStretch: Double, maxShear: Double,
+        thresholds: QualityThresholds = .default, bitDepth: Int = 16,
+        detector: String, resampler: String,
         tiles: [TileRecord]
     ) {
         self.canvasSize = canvasSize
@@ -78,6 +91,8 @@ public struct RunManifest: Codable, Sendable {
         self.targets = targets
         self.maxStretch = maxStretch
         self.maxShear = maxShear
+        self.thresholds = thresholds
+        self.bitDepth = bitDepth
         self.detector = detector
         self.resampler = resampler
         self.tiles = tiles
@@ -94,6 +109,11 @@ public struct RunManifest: Codable, Sendable {
         targets = try container.decodeIfPresent([String: Point2D].self, forKey: .targets) ?? [:]
         maxStretch = try container.decodeIfPresent(Double.self, forKey: .maxStretch) ?? 0.05
         maxShear = try container.decodeIfPresent(Double.self, forKey: .maxShear) ?? 0.05
+        // A manifest written before the gates travelled in it says nothing about them.
+        // The defaults are the honest answer there, and they are what that run used.
+        thresholds = try container.decodeIfPresent(
+            QualityThresholds.self, forKey: .thresholds) ?? .default
+        bitDepth = try container.decodeIfPresent(Int.self, forKey: .bitDepth) ?? 16
         detector = try container.decodeIfPresent(String.self, forKey: .detector) ?? "vision"
         resampler = try container.decodeIfPresent(String.self, forKey: .resampler) ?? "lanczos"
         tiles = try container.decode([TileRecord].self, forKey: .tiles)

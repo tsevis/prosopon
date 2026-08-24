@@ -5,8 +5,15 @@ import SwiftUI
 ///
 /// Deliberately thin. Every knob the command line has is not here — the defaults are the
 /// ones the project settled on and a second place to change them is a second place for
-/// them to disagree. What is here is the two decisions that change the result enough that
-/// somebody should make them knowingly: which detector, and where the tiles go.
+/// them to disagree. What is here is the three decisions that change the result enough
+/// that somebody should make them knowingly: which detector, how far a source may be
+/// enlarged, and where the tiles go.
+///
+/// The enlargement limit earned its place the hard way. It was a constant at 2.0, and on
+/// a corpus of ordinary studio portraits it declined seventeen of twenty with no way to
+/// say otherwise — and no correction could help, because how far a face has to be
+/// enlarged is fixed by the source resolution and the eye coordinates, not by where the
+/// landmarks sit.
 struct AnalyzeView: View {
     let state: AppState
     let onChooseOutput: () -> Void
@@ -60,9 +67,51 @@ struct AnalyzeView: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 18) {
             detectorChoice
+            magnificationChoice
             outputChoice
         }
         .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    private var magnificationChoice: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Enlarge a source at most")
+                .font(Theme.Font.supportEmphasis)
+                .foregroundStyle(Theme.ink)
+
+            HStack(spacing: 10) {
+                Slider(
+                    value: Binding(
+                        get: { state.maxMagnification },
+                        set: { state.maxMagnification = ($0 * 10).rounded() / 10 }
+                    ),
+                    in: 1...8, step: 0.1
+                )
+                .frame(maxWidth: 260)
+                .tint(Theme.accent)
+
+                Text(String(format: "%.1f\u{00D7}", state.maxMagnification))
+                    .font(Theme.Font.metric)
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 52, alignment: .leading)
+            }
+
+            Text("The canvas wants a face about a thousand pixels across. A photograph "
+                + "shot smaller has to be enlarged to reach it, and past a point the tile "
+                + "is visibly soft \u{2014} so this is a gate, and anything beyond it is "
+                + "declined and not written. Raise it to keep tiles the default would "
+                + "refuse; every one still reports the enlargement it needed.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("A correction cannot get a tile past this. How far a face must be "
+                + "enlarged follows from the source resolution and the fixed eye "
+                + "coordinates, not from where the landmarks sit.")
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var detectorChoice: some View {

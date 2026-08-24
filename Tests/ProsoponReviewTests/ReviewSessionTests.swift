@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ProsoponCore
 import ProsoponIO
+import ProsoponPipeline
 import ProsoponQA
 import Testing
 @testable import ProsoponReview
@@ -19,13 +20,27 @@ enum Fixture {
         )
     }
 
+    /// A face small in its frame, so reaching the canvas needs about 2.5x enlargement —
+    /// past the default gate and well inside a raised one. This is the ordinary case on a
+    /// corpus that was not shot for this, not an extreme.
+    static func smallFaceLandmarks() -> FaceLandmarks {
+        FaceLandmarks(
+            viewerLeftEye: Point2D(424, 400),
+            viewerRightEye: Point2D(476, 400),
+            mouth: Point2D(450, 458)
+        )
+    }
+
     static func makeRun(
         names: [String],
         offsets: [Point2D]? = nil,
         yaws: [Double?]? = nil,
         detector: String = "vision",
         writeTiles: Bool = true,
-        qaDisplacements: [String: (Double, Double)]? = nil
+        qaDisplacements: [String: (Double, Double)]? = nil,
+        landmarks overrideLandmarks: FaceLandmarks? = nil,
+        thresholds: QualityThresholds = .default,
+        bitDepth: Int = 16
     ) throws -> URL {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("prosopon-review-\(UInt64.random(in: 0...UInt64.max))")
@@ -36,7 +51,7 @@ enum Fixture {
             let sourceURL = directory.appendingPathComponent("\(name)-source.png")
             try ImageWriting.write(try sourceImage(), to: sourceURL, format: .png)
 
-            let marks = landmarks(offsetBy: offsets?[index] ?? .zero)
+            let marks = overrideLandmarks ?? landmarks(offsetBy: offsets?[index] ?? .zero)
             let spec = CanvasSpec.standard.scaled(toSize: canvas)
             let alignment = try AlignmentSolver.solve(landmarks: marks, spec: spec)
 
@@ -55,14 +70,17 @@ enum Fixture {
             ))
         }
 
-        let manifest = RunManifest(
-            canvasSize: canvas, gridStep: canvas / 16,
-            targets: [:], maxStretch: 0.05, maxShear: 0.05,
-            detector: detector, resampler: "coregraphics", tiles: records
+        // Written by the real producer rather than assembled here in the shape the reader
+        // wants. That distinction is what this project learned the hard way from the
+        // qa.json fixture, and it is what makes this fixture exercise the thresholds and
+        // the bit depth actually travelling in the file.
+        try RunWriter.write(
+            records, to: directory,
+            spec: CanvasSpec.standard.scaled(toSize: canvas),
+            solveOptions: .default,
+            thresholds: thresholds, bitDepth: bitDepth,
+            detector: detector, resampler: "coregraphics"
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(manifest).write(to: directory.appendingPathComponent("manifest.json"))
 
         if let qaDisplacements {
             try writeQAReport(qaDisplacements, to: directory)

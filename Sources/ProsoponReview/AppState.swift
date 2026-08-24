@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import ProsoponCore
+import ProsoponIO
 import ProsoponMix
 import ProsoponPipeline
 import ProsoponRender
@@ -36,6 +37,16 @@ public final class AppState {
     }
 
     public var detector = DetectorChoice.vision
+
+    /// How far a source may be enlarged onto the canvas before its tile is declined.
+    ///
+    /// A setting rather than a constant because it is the gate that actually bites. A
+    /// 2048 canvas wants a face about a thousand pixels across; a corpus shot smaller than
+    /// that needs two or three times enlargement, and at the built-in 2.0 the app declined
+    /// seventeen of twenty portraits with no control anywhere to say otherwise. The tiles
+    /// are soft and the metrics say so — that is a judgement for whoever is looking at
+    /// them, not one to make on their behalf by refusing to write the file.
+    public var maxMagnification: Double = 2.0
 
     // MARK: The mix
 
@@ -104,6 +115,7 @@ public final class AppState {
             isAnalysing: isAnalysing,
             progress: progress,
             editCount: session?.editCount ?? 0,
+            correctedCount: session?.correctedCount ?? 0,
             isSaving: isSaving,
             lastSaveSummary: lastSaveSummary,
             qaReportProblem: session?.qaReportProblem,
@@ -281,6 +293,7 @@ public final class AppState {
 
         let spec = CanvasSpec.standard
         let solveOptions = SolveOptions.default
+        let thresholds = QualityThresholds(maxMagnification: maxMagnification)
         // Read off `self` here rather than inside the task, which holds it weakly.
         let choice = detector
         let detectorName = choice.rawValue
@@ -291,7 +304,7 @@ public final class AppState {
                     at: directory, withIntermediateDirectories: true
                 )
                 let pipeline = try Self.makePipeline(
-                    spec: spec, solveOptions: solveOptions,
+                    spec: spec, solveOptions: solveOptions, thresholds: thresholds,
                     detector: choice, directory: directory
                 )
                 let tiles = await BatchRunner.run(
@@ -307,6 +320,7 @@ public final class AppState {
                 }
                 try RunWriter.write(
                     tiles, to: directory, spec: spec, solveOptions: solveOptions,
+                    thresholds: thresholds, bitDepth: OutputDepth.eight.rawValue,
                     detector: detectorName, resampler: Resampler.lanczos.rawValue
                 )
                 await MainActor.run { self?.finishAnalysis(directory: directory, problem: nil) }
@@ -341,13 +355,13 @@ public final class AppState {
     /// Built off the main actor's back: compiling the Metal shader and loading two ONNX
     /// models is a per-run cost, not a per-image one.
     private nonisolated static func makePipeline(
-        spec: CanvasSpec, solveOptions: SolveOptions,
+        spec: CanvasSpec, solveOptions: SolveOptions, thresholds: QualityThresholds,
         detector: DetectorChoice, directory: URL
     ) throws -> Pipeline {
         Pipeline(
             spec: spec,
             solveOptions: solveOptions,
-            thresholds: .default,
+            thresholds: thresholds,
             selection: .all,
             detector: try detector.make(),
             renderer: try Resampler.lanczos.makeRenderer(spec: spec),

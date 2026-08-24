@@ -14,6 +14,8 @@ public enum RunWriter {
         to directory: URL,
         spec: CanvasSpec,
         solveOptions: SolveOptions,
+        thresholds: QualityThresholds = .default,
+        bitDepth: Int = 16,
         detector: String,
         resampler: String
     ) throws {
@@ -29,6 +31,12 @@ public enum RunWriter {
             // A run made with shear turned off records a maximum of zero rather than the
             // number it was told to ignore, so reopening it solves the way it was solved.
             maxShear: solveOptions.correctsHorizontalMouthOffset ? solveOptions.maxShear : 0,
+            // The gates travel with the run. A tile accepted at a raised magnification
+            // limit is indistinguishable from one accepted at the default until somebody
+            // re-solves it, and re-solving against the wrong limit is how a run reopens
+            // with most of its tiles marked rejected.
+            thresholds: thresholds,
+            bitDepth: bitDepth,
             detector: detector,
             resampler: resampler,
             tiles: tiles

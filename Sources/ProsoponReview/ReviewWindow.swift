@@ -239,23 +239,25 @@ public struct ReviewWindow: View {
         let spec = session.spec
         let options = session.options
         let resampler = Resampler(rawValue: session.resampler) ?? .lanczos
+        let depth = OutputDepth(rawValue: session.bitDepth) ?? .sixteen
 
         Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<String, Error> in
+            let result = await Task.detached(priority: .userInitiated) { () -> Result<CorrectionWriter.Summary, Error> in
                 do {
-                    let summary = try CorrectionWriter.save(
+                    return .success(try CorrectionWriter.save(
                         entries: entries, directory: directory,
-                        spec: spec, options: options, resampler: resampler
-                    )
-                    return .success(summary.describedOutcome)
+                        spec: spec, options: options, resampler: resampler, depth: depth
+                    ))
                 } catch {
                     return .failure(error)
                 }
             }.value
 
             switch result {
-            case .success(let message):
-                state.recordSave(message)
+            case .success(let summary):
+                // Before the message, so the count the banner reads has already fallen.
+                session.markSaved(summary.written)
+                state.recordSave(summary.describedOutcome)
                 await thumbnails.invalidateAll()
             case .failure(let error):
                 state.problem = "\(error)"

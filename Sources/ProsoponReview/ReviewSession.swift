@@ -47,6 +47,12 @@ public final class ReviewSession {
     public private(set) var options: SolveOptions = .default
     public private(set) var resampler: String = "lanczos"
     public private(set) var detector: String = "vision"
+    /// The gates the run was aligned with, so re-solving a correction reaches the same
+    /// verdict the run did rather than the built-in defaults'.
+    public private(set) var thresholds: QualityThresholds = .default
+    /// Bits per channel the run's tiles were written at, so a correction re-renders at
+    /// the depth the rest of the folder is in.
+    public private(set) var bitDepth: Int = 16
 
     public var sortOrder: ReviewSortOrder = .triage {
         didSet { applySort() }
@@ -85,6 +91,8 @@ public final class ReviewSession {
         )
         resampler = manifest.resampler
         detector = manifest.detector
+        thresholds = manifest.thresholds
+        bitDepth = manifest.bitDepth
 
         entries = manifest.tiles.compactMap { record in
             guard let landmarks = record.landmarks else { return nil }
@@ -98,7 +106,8 @@ public final class ReviewSession {
                 detected: landmarks,
                 detectedYawDegrees: record.yawDegrees,
                 spec: spec,
-                options: options
+                options: options,
+                thresholds: thresholds
             )
         }
         guard !entries.isEmpty else { throw ReviewLoadError.emptyManifest(manifestURL) }
@@ -201,6 +210,13 @@ public final class ReviewSession {
         entries[index].setLandmark(which, toCanvasPoint: point, spec: spec, options: options)
     }
 
+    /// The same correction stated in source space, which is where a landmark actually
+    /// lives. The drag says it in canvas space; a test can say it directly.
+    public func moveLandmark(_ which: Landmark, toSourcePoint point: Point2D) {
+        guard let index = selectedIndex else { return }
+        entries[index].setLandmark(which, toSourcePoint: point, spec: spec, options: options)
+    }
+
     /// The solve that *would* result from putting `which` at `point`, without committing.
     ///
     /// Lets the metrics track a drag in progress while the rendered image stays put, so
@@ -224,6 +240,21 @@ public final class ReviewSession {
     public var editCount: Int { editedEntries.count }
 
     public func recordSave(_ summary: String) { lastSaveSummary = summary }
+
+    /// Tiles that differ from what the detector found, saved or not. Revert acts on these.
+    public var correctedCount: Int { entries.count(where: \.isCorrected) }
+
+    /// Records which tiles are now on disk, and in what state.
+    ///
+    /// Without this the edit count could never fall: `isEdited` used to mean "differs from
+    /// the detector", which stays true after a correction is written. The banner claimed
+    /// unsaved work for ever and Save stayed lit over a save that had in fact worked.
+    public func markSaved(_ written: [String: FaceLandmarks]) {
+        for index in entries.indices {
+            guard let landmarks = written[entries[index].id] else { continue }
+            entries[index].markSaved(landmarks)
+        }
+    }
 
     /// What to say beside a yaw figure this detector cannot really support.
     ///

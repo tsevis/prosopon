@@ -165,7 +165,10 @@ public enum CommandSet {
                 title: "Revert",
                 symbol: "arrow.uturn.backward",
                 weight: .quiet,
-                isEnabled: hasEdits && !state.isSaving,
+                // Corrections, not unsaved ones: a correction that has been written is
+                // still a correction, and putting it back is exactly what somebody who
+                // has just looked at the result wants to do.
+                isEnabled: state.correctedCount > 0 && !state.isSaving,
                 help: "Put the selected tile's landmarks back where the detector had them"
             ),
             Command(

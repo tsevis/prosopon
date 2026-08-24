@@ -23,9 +23,19 @@ public struct ReviewEntry: Identifiable, Sendable {
     /// and made saving a correction write that value out of the tile's quality report.
     public let detectedYawDegrees: Double?
 
+    /// The gates this run was aligned with, carried from its manifest.
+    ///
+    /// Re-solving against the built-in defaults instead is how a run made with a raised
+    /// magnification limit reopens showing most of its tiles as rejected, with their
+    /// files sitting untouched beside the manifest and no correction able to fix it.
+    public let thresholds: QualityThresholds
+
     /// What the detector originally produced, kept so a correction can be undone.
     public let detected: FaceLandmarks
     public private(set) var landmarks: FaceLandmarks
+    /// What was last written to disk. Equal to `detected` on load, because that is what
+    /// the manifest holds.
+    public private(set) var savedLandmarks: FaceLandmarks
 
     public private(set) var alignment: Alignment?
     public private(set) var fit: SourceFit?
@@ -36,14 +46,27 @@ public struct ReviewEntry: Identifiable, Sendable {
     public var consensusDisplacement: Double?
     public var consensusMatched: Bool?
 
-    public var isEdited: Bool { landmarks != detected }
+    /// Changed since the last save — the thing "N corrections not yet saved" is counting,
+    /// and the set a save has to re-render.
+    ///
+    /// **Not** "differs from the detector". Measured against `detected`, this could never
+    /// become false: a correction stays a correction after it is written, so the banner
+    /// went on claiming unsaved work for ever, Save stayed lit, and pressing it again
+    /// re-rendered the same twenty tiles. The save was working; only the accounting was
+    /// wrong, which is indistinguishable from the outside.
+    public var isEdited: Bool { landmarks != savedLandmarks }
+
+    /// Differs from what the detector found, saved or not. What Revert undoes.
+    public var isCorrected: Bool { landmarks != detected }
+
     public var name: String { sourceURL.deletingPathExtension().lastPathComponent }
 
     public init(
         id: String, sourceURL: URL, outputURL: URL?, faceIndex: Int,
         sourceWidth: Int, sourceHeight: Int, detected: FaceLandmarks,
         detectedYawDegrees: Double? = nil,
-        spec: CanvasSpec = .standard, options: SolveOptions = .default
+        spec: CanvasSpec = .standard, options: SolveOptions = .default,
+        thresholds: QualityThresholds = .default
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -52,8 +75,10 @@ public struct ReviewEntry: Identifiable, Sendable {
         self.sourceWidth = sourceWidth
         self.sourceHeight = sourceHeight
         self.detectedYawDegrees = detectedYawDegrees
+        self.thresholds = thresholds
         self.detected = detected
         self.landmarks = detected
+        self.savedLandmarks = detected
         resolve(spec: spec, options: options)
     }
 
@@ -69,7 +94,8 @@ public struct ReviewEntry: Identifiable, Sendable {
             alignment = solved
             fit = measured
             quality = QualityReport.evaluate(
-                alignment: solved, fit: measured, yawDegrees: detectedYawDegrees
+                alignment: solved, fit: measured, yawDegrees: detectedYawDegrees,
+                thresholds: thresholds
             )
             failure = nil
         } catch {
@@ -106,6 +132,16 @@ public struct ReviewEntry: Identifiable, Sendable {
     public mutating func revert(spec: CanvasSpec = .standard, options: SolveOptions = .default) {
         landmarks = detected
         resolve(spec: spec, options: options)
+    }
+
+    /// Records that `landmarks` are now what is on disk.
+    ///
+    /// Takes the landmarks that were actually written rather than trusting the current
+    /// ones: a save runs off the main actor over a snapshot, and a tile edited again while
+    /// it was in flight has not been saved in its present state.
+    public mutating func markSaved(_ written: FaceLandmarks) {
+        guard landmarks == written else { return }
+        savedLandmarks = written
     }
 
     /// Worst-first ordering key: unsolvable tiles, then rejected, then by score.
