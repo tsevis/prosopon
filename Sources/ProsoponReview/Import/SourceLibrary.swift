@@ -68,8 +68,25 @@ public final class SourceLibrary {
         rescan()
     }
 
+    /// Dismisses one source that could not be opened, for good.
+    ///
+    /// It used to drop the row and leave the bookmark behind, so the same dead entry
+    /// came back on the next launch: a button that could dismiss a thing but never
+    /// remove it.
     public func forget(_ missingSource: MissingSource) {
         missing.removeAll { $0.path == missingSource.path }
+        bookmarks.forget(path: missingSource.path, keeping: sources)
+    }
+
+    /// Dismisses all of them at once.
+    ///
+    /// Earned its place on a list of twenty dead rows, each with its own Forget. What
+    /// they had in common was the cause, so clearing them one at a time was twenty
+    /// clicks to recover from a single event.
+    public func forgetAllMissing() {
+        guard !missing.isEmpty else { return }
+        missing.removeAll()
+        bookmarks.forgetAllUnresolved(keeping: sources)
     }
 
     public func setRecursive(_ isRecursive: Bool, for source: ImageSource) {
@@ -127,8 +144,9 @@ public final class SourceLibrary {
         sources = restored.sources
         missing = restored.unresolved.map { MissingSource(path: $0.path, reason: $0.reason) }
         for source in sources { beginAccess(to: source.url) }
-        // A stale bookmark resolved to a URL that has moved; writing it back now means
-        // the next launch does not have to resolve it the slow way again.
+        // Something had to be recovered a way other than the one it was written with --
+        // a stale bookmark, or one this build's identity cannot open. Writing it back
+        // now in a form that works means the next launch does not have to.
         if restored.refreshedCount > 0 { bookmarks.save(sources) }
         rescan()
     }

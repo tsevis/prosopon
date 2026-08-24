@@ -157,7 +157,26 @@ public final class AppState {
 
     // MARK: Opening a run
 
+    /// Opens whatever somebody chose, rather than one of the two things it could be.
+    ///
+    /// A folder holding `manifest.json` is a run and is opened as one. A folder holding
+    /// photographs is source material and is imported. Insisting on the first is how
+    /// choosing a folder of portraits produced an alert saying to run `prosopon align`
+    /// first — advice given by the one screen whose whole purpose is to run it, about the
+    /// very folder it would have run on.
     public func open(_ directory: URL) {
+        if ReviewSession.isRun(directory) {
+            openRun(directory)
+        } else if containsPhotographs(directory) {
+            sources.add([directory])
+            stage = .importPortraits
+        } else {
+            problem = "\(directory.lastPathComponent) holds neither a manifest.json from an "
+                + "earlier run nor any photographs Prosopon can read."
+        }
+    }
+
+    private func openRun(_ directory: URL) {
         do {
             session = try ReviewSession(directory: directory)
             outputDirectory = directory
@@ -166,6 +185,12 @@ public final class AppState {
         } catch {
             problem = "\(error)"
         }
+    }
+
+    /// Asked of the folder itself, not of the library, so a folder with nothing in it is
+    /// never added and then found to be empty.
+    private func containsPhotographs(_ directory: URL) -> Bool {
+        !SourceScanner.scan([ImageSource.at(directory)]).isEmpty
     }
 
     public func recordSave(_ summary: String) {

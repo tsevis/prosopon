@@ -214,7 +214,7 @@ public struct ReviewWindow: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.message = "Choose a folder written by an earlier run \u{2014} the one holding "
-            + "manifest.json."
+            + "manifest.json \u{2014} or a folder of photographs to import."
         panel.prompt = "Open"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         state.open(url)

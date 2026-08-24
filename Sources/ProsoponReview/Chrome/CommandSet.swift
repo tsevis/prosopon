@@ -158,7 +158,7 @@ public enum CommandSet {
                 symbol: "folder",
                 weight: .quiet,
                 isEnabled: !state.isSaving,
-                help: "Open a folder written by an earlier run"
+                help: "Open a folder written by an earlier run, or one of photographs"
             ),
             Command(
                 action: .revertTile,

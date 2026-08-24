@@ -36,7 +36,20 @@ struct ImportView: View {
 
     private var sourceList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PanelHeading("Sources", detail: sourcesDetail)
+            PanelHeading("Sources", detail: sourcesDetail) {
+                if !library.missing.isEmpty {
+                    // One button for the whole panel, because the rows below it are not
+                    // twenty separate misfortunes: a corpus goes missing all at once,
+                    // when a volume is unplugged or a build stops recognising its own
+                    // bookmarks, and clearing that one event should cost one click.
+                    Button("Forget All") { library.forgetAllMissing() }
+                        .buttonStyle(.plain)
+                        .font(Theme.Font.meta)
+                        .foregroundStyle(Theme.cautionInk)
+                        .help("Remove all \(library.missing.count) sources that could not be "
+                            + "opened. The photographs themselves are not touched.")
+                }
+            }
 
             if library.sources.isEmpty && library.missing.isEmpty {
                 EmptyStateView(
@@ -74,10 +87,15 @@ struct ImportView: View {
         )
     }
 
+    /// Says what is missing as well as what is there. "none" over a list of twenty rows
+    /// is not a heading anybody can act on.
     private var sourcesDetail: String {
-        let count = library.sources.count
-        guard count > 0 else { return "none" }
-        return "\(count) \u{00B7} \(library.scan.imageCount) images"
+        var parts: [String] = []
+        if library.sources.count > 0 {
+            parts.append("\(library.sources.count) \u{00B7} \(library.scan.imageCount) images")
+        }
+        if !library.missing.isEmpty { parts.append("\(library.missing.count) missing") }
+        return parts.isEmpty ? "none" : parts.joined(separator: " \u{00B7} ")
     }
 
     // MARK: What was found
@@ -301,13 +319,17 @@ private struct Thumbnail: View {
 
 /// A panel's own heading. The only thing a panel gets to carry besides its content —
 /// every action lives in the command bar.
-struct PanelHeading: View {
+struct PanelHeading<Trailing: View>: View {
     let title: String
     let detail: String?
+    /// Sits at the right of the heading, for the one action that is about the whole
+    /// panel rather than about any row in it.
+    @ViewBuilder let trailing: Trailing
 
-    init(_ title: String, detail: String? = nil) {
+    init(_ title: String, detail: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.title = title
         self.detail = detail
+        self.trailing = trailing()
     }
 
     var body: some View {
@@ -321,9 +343,16 @@ struct PanelHeading: View {
                     .foregroundStyle(Theme.inkTertiary)
             }
             Spacer(minLength: 0)
+            trailing
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+}
+
+extension PanelHeading where Trailing == EmptyView {
+    init(_ title: String, detail: String? = nil) {
+        self.init(title, detail: detail) { EmptyView() }
     }
 }

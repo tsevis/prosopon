@@ -64,6 +64,15 @@ public final class ReviewSession {
     /// Set when a report was present but unreadable, rather than letting it pass unnoticed.
     public private(set) var qaReportProblem: String?
 
+    /// Whether this folder is a run, asked before opening rather than by opening and
+    /// catching the failure. Lets a caller handed an arbitrary folder tell the two kinds
+    /// apart — a run to review, or portraits to import — instead of assuming.
+    public static func isRun(_ directory: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("manifest.json").path
+        )
+    }
+
     public init(directory: URL) throws {
         self.directory = directory
         try load()
