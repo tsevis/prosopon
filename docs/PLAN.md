@@ -433,7 +433,7 @@ anywhere, which is the exact shape of the `qa.json` bug that hid a dead feature 
 
 ### Failures that look like nothing
 
-None of these produces an error, and three of them produce the identical symptom: a live
+None of these produces an error, and four of them produce the identical symptom: a live
 process, a menu bar, and no window.
 
 - **A resource loaded by asset name comes back empty.** Nino recorded it: the splash
@@ -455,9 +455,33 @@ process, a menu bar, and no window.
   that turned out to be this, not the code under test. Use `review.sh`; it does the
   `touch` and the `lsregister`.
 
-The last two are worth stating together, because they are indistinguishable from outside
+- **`WindowGroup` sometimes does not make its window at all.** The fourth cause, and the
+  one that outlived the other three being fixed. Reproduced by killing the running
+  instance and starting another straight after: **2 failures in 10 launches**. A `sample`
+  of a stuck process shows the main thread idle in `mach_msg` — not a hang, simply an
+  event loop with nothing to show. `WindowWatchdog` runs from `App.init` (the only place
+  it can: the check has to happen when there is no window, and a `.task` on a view that
+  was never created never fires) and sends the reopen event a Dock-icon click sends, which
+  SwiftUI's own delegate answers by building the missing window. **30 launches afterwards:
+  30 windows, no duplicates.**
+
+  Two faults wear this one face, which is why the first attempt only cut the rate to 1 in
+  20. Usually no window is built and reopen builds one; sometimes a window exists and was
+  never ordered on screen, and reopen does nothing for that because SwiftUI can see it
+  already holds one. So the watchdog distinguishes them — present the window that exists,
+  ask for one only when there is none. Asking in the other case is how a slow launch ends
+  up with two.
+
+  It is deliberately **not** an `NSApplicationDelegateAdaptor`. Installing one to force
+  `setActivationPolicy(.regular)` is what turned this from intermittent into permanent.
+
+The middle two are worth stating together, because they are indistinguishable from outside
 and from each other. Anything that measures whether a window appeared has to build the
 bundle the way `review.sh` builds it, or it is measuring its own shortcut.
+
+The remedy for the fourth repairs a bad launch within about a second; it does not prevent
+one. The underlying race is Apple's, and a verified repair was preferred to a speculative
+fix to the cause.
 
 ---
 
@@ -549,10 +573,19 @@ claiming it.
 
 Each tile is measured along the eight strips it could present to a neighbour — there are
 eight rather than four because which pixels a tile shows depends on where it is placed.
-A strip's signature is the mean colour of a 16 px band, averaged in **linear light**
-(a physical mixture, not an average of gamma-encoded numbers) and converted once to
-**CIE Lab** (equal distances are roughly equal differences to the eye), plus σ(L\*) as a
-small texture term at weight 0.5.
+A strip's signature is a **profile of sixteen samples along its length**, each the mean
+colour of its segment averaged in **linear light** (a physical mixture, not an average of
+gamma-encoded numbers) and converted once to **CIE Lab** (equal distances are roughly
+equal differences to the eye), plus σ(L\*) over the whole strip as a small texture term at
+weight 0.5.
+
+It was a single mean per strip until it was measured. A seam is 1024 px long and a face
+changes a great deal over that distance, so two strips running in opposite directions —
+one lightening down the join, the other darkening — have identical means and a visible
+break where they meet. The distance now has two parts, because the two failures look
+different: a constant offset is a step at the seam, while disagreeing *slopes* are the two
+halves drifting apart towards one end, which reads as two pictures rather than one face
+and is weighted half again as heavily.
 
 Measured at half resolution by default. A strip mean survives a careful downsample — it is
 a mean — and at 2,560 tiles that is the difference between seconds and minutes.
@@ -677,6 +710,105 @@ immediately.
 
 ### Also not finished
 
-- **Nothing measures the join itself.** The cost is a distance between two strip means, not
-  a reading of the finished seam. A per-composite score taken across the assembled canvas
-  would be a better sort key for "which of these 640 went wrong".
+- **Nothing reads the finished canvas.** The manifest now carries `worstSeam` per
+  composite — the largest colour difference at any single point along any join, which is
+  the figure that corresponds to what a viewer sees, and which an average hides. It is
+  still computed from the tiles' own strips rather than from the assembled document, so it
+  cannot see anything the composition itself introduces.
+
+---
+
+## 15. The settings that define a run
+
+A run is not just its tiles. Four values decide what those tiles are, and every one of them
+was, at some point, held in two places that could disagree: in the manifest of the run on
+disk, and in whatever the app happened to default to. Each disagreement destroyed work, and
+none of them produced an error.
+
+| setting | what it decides | what losing it looks like |
+|---|---|---|
+| `maxMagnification` | how far a source may be enlarged | tiles declined and deleted; a correction cannot rescue them |
+| `maxStretch` | vertical stretch, so the mouth reaches its target *y* | mouths short of the seam, and a drag that moves the marker and not the face |
+| `maxShear` | horizontal shear, so the mouth reaches its target *x* | mouths beside the seam, whatever the stretch does |
+| `detector` | Vision or InsightFace | every yaw reported as 0°, and a mix whose pose sort is silently a proxy |
+
+All four are now **written down** in preferences, **adopted** from the run being opened and
+from any run already in the output folder, and **recorded** in the manifest. The rule is
+that the control describes what pressing the button would actually do, in both directions.
+
+### Why this cost so much
+
+The same corpus of 204 portraits was destroyed three times in one session before the
+pattern was visible, and each time the fault was one rung further out than the last:
+
+1. The gate was a constant with no control at all.
+2. It became a control, adopted when a run was opened for review — but the app opens with
+   no run, which is how it opens from Finder, so nothing set it.
+3. It was adopted and persisted, and Fine Tune still ignored it: a drag re-solves against
+   `ReviewSession.options`, read from the manifest, and the slider set something else
+   entirely. A control that was correct in one place and unreachable from the other.
+
+The third is the one worth remembering. Widening the slider was a real fix to a real
+limit — the solver never had a ceiling, only the UI did — and it changed nothing, because
+it was connected to the wrong end. "No change" was the correct report.
+
+### Measured: the GUI and the CLI produce the same run
+
+The check that closes it. Align 204 portraits from the command line, then press **Analyse**
+in the app on the same corpus and compare:
+
+```
+manifest checksum before   56e89e351af833e0ec5b306f10436302
+manifest checksum after    56e89e351af833e0ec5b306f10436302
+```
+
+Byte-identical. The app re-derived the whole run from scratch — same detector, same caps,
+same landmarks, same transforms — and landed exactly where the CLI did. 204 candidates,
+204 written, worst mouth error 0.00 px, yaw median 2.71°.
+
+No test can produce this evidence. It needs the real button, the real models and 204 real
+photographs, and it is the only thing that demonstrates the two paths are one pipeline
+rather than two that agree today.
+
+### Placing a mouth needs both axes
+
+Both eyes are pinned exactly, so the mouth is reached by stretching about the eye line and
+shearing about it. Measured on the same 204 portraits with InsightFace landmarks:
+
+| stretch cap | tiles clamped | worst mouth error |
+|---|---|---|
+| 5 % | 103 / 204 | 140.5 px |
+| 12 % | 11 / 204 | 73.2 px |
+| 25 % | 0 / 204 | 32.5 px |
+| 50 % | 0 / 204 | 32.5 px |
+
+25 % frees every tile and 50 % buys nothing — worth knowing before reaching for a bigger
+number than the work needs. The 32.5 px that survives an *uncapped* stretch is entirely
+horizontal: stretch owns *y*, shear owns *x*, and the shear budget was still at 5 %. At
+**25 % stretch and 20 % shear the worst mouth error over all 204 tiles is 0.00 px** — every
+mouth exactly on target.
+
+The cost is narrower than the numbers suggest. Median applied stretch is 4.92 % at both
+12 % and 25 %: the extra range is only ever spent on the faces whose proportions were
+fighting the canvas, so raising the cap does not distort the corpus.
+
+### A mix folder is output that looks exactly like input
+
+A folder of 51 composites and its `previews/` were added to Import beside the portraits.
+Analyse took **306 candidates instead of 204**. The gates rejected 101 of them on coverage
+and magnification — and one got through, so a quartered portrait of four different people
+entered the corpus as a face.
+
+That ratio is about what it should be. A composite is 2048 × 2048 with two eyes and a mouth
+within a few pixels of where a portrait's are, *because that is what it was built from*.
+There is no reliable way to tell one from a photograph by looking at the pixels. There is a
+completely reliable way to tell by looking beside them: `mix-manifest.json`.
+
+Any directory holding one is now skipped whole, `previews/` included. The output directory
+had been excluded for the same reason since the beginning — a run must not import its own
+tiles — but that rule only ever covered one folder, and a mix written anywhere else was
+invisible to it.
+
+A folder left out this way is **named, not emptied**. `SourceScan.excluded` is kept separate
+from `unreadable` because nothing went wrong, and the row says which folder and why:
+somebody who drags a mix folder in and reads "0 images found" has been told nothing.
