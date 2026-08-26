@@ -11,7 +11,7 @@ struct Prosopon: AsyncParsableCommand {
             onto target by a vertical stretch and shear about the eye line, both capped \
             so no face is distorted by more than the allowed percentage.
             """,
-        version: "0.1.0",
+        version: "0.4.2",
         subcommands: [Align.self, Calibrate.self, Stack.self, QA.self, Mix.self],
         defaultSubcommand: Align.self
     )

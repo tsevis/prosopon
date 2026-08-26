@@ -28,7 +28,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAME="Prosopon Review"
 VERSION="$(grep -o 'CFBundleShortVersionString</key><string>[^<]*' "$REPO/scripts/make_app.sh" \
            | head -1 | sed 's/.*<string>//')"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.4.2}"
 
 OUTPUT="${1:-$REPO/dist/Prosopon-Review-$VERSION.dmg}"
 STAGING="$REPO/.build/dmg-staging"

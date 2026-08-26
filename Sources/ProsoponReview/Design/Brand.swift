@@ -15,7 +15,7 @@ import Foundation
 public enum Brand {
     public static let name = "Prosopon"
     public static let tagline = "Portraits on one fixed face grid."
-    public static let version = "0.1.0"
+    public static let version = "0.4.2"
 
     public static let makerName = "Charis Tsevis"
     public static let makerSite = URL(string: "https://www.tsevis.com")!

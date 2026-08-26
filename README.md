@@ -11,6 +11,11 @@ left eye   (512, 512)      right eye  (1536, 512)      mouth  (1024, 1664)
 Both eyes land on their targets **exactly**. The mouth is brought onto target by a
 vertical stretch and a shear pivoted on the eye line — capped, by default, at 5 %.
 
+![The Mix stage: a grid of quartered-portrait composites, each labelled with its filename, its mouth-seam distance and the four photographs it was cut from](docs/screenshots/mix.jpg)
+
+*Mix, on a run of 220 portraits: 39 composites written from 156 aligned tiles, each one
+showing what it cost at the hardest join.*
+
 ## Build
 
 ```bash
@@ -20,7 +25,7 @@ swift build -c release
 A double-clickable disk image of the review app:
 
 ```bash
-./scripts/make_dmg.sh              # dist/Prosopon-Review-0.1.0.dmg
+./scripts/make_dmg.sh              # dist/Prosopon-Review-0.4.2.dmg
 ```
 
 **The image is built in the repository, under `dist/`, and committed with it** — not in
@@ -142,9 +147,19 @@ construction.
 ### How the four are chosen
 
 Not by shuffling and hoping. Every tile is measured along the eight strips it could
-present to a neighbour: the mean colour of a 16 px strip, taken in **linear light** and
-compared in **CIE Lab**, plus the standard deviation of L\* as a texture term. Then, per
-composite:
+present to a neighbour: a 16 px strip sampled at **sixteen points along its length**, taken
+in **linear light** and compared in **CIE Lab**, plus the standard deviation of L\* as a
+texture term.
+
+A profile rather than one mean, because one mean cannot see the failure that matters. Two
+strips running in opposite directions — one lightening down the join, the other darkening
+— average to the same colour and score as a perfect match, and an eye sees nothing else.
+So the distance has two parts: a constant offset, which reads as a step at the seam, and
+disagreeing slopes, which read as two pictures rather than one face and are weighted half
+again as heavily. Signatures carrying no profile still compare on their means, so nothing
+measured by an earlier version stops working.
+
+Then, per composite:
 
 1. **The most frontal half of the corpus is reserved for the top quadrants**, where the
    eyes are. Splitting the pool by frontality before any matching satisfies that exactly,
@@ -158,6 +173,34 @@ composite:
 Greedy and deliberately so — an optimal assignment over hundreds of tiles is not worth its
 cost, and a good first choice on the hardest seam is worth more than a balanced compromise
 across all four. The costs rise through a batch as the easy matches are spent.
+
+**Then a second pass repairs what greed could not foresee.** The first pass commits the
+first composite's four tiles before it has seen what the fifty-first needs. A 2-opt pass
+swaps tiles between composites and keeps the exchange only when both come out better, so
+it cannot make the plan worse — every accepted swap strictly lowers the total. It holds
+the invariants the greedy pass establishes: every tile used exactly once, no photograph
+against itself, and top slots swapped only with top slots, since reserving the frontal half
+for the quadrants with the eyes in them is a decision made before matching and not one for
+a tone match to overturn.
+
+Measured on 204 aligned tiles, 51 composites, seed 1, scored on the worst single point of
+any join in ΔE — a figure that depends only on which tiles were chosen, so the matchers are
+comparable on it:
+
+```
+                      mean only   + profile   + refinement
+  median                  25.92       23.65         21.43
+  mean                    27.49       25.11         23.13
+  max                     58.77       48.88         48.88
+  joins over 25 dE        26/51       22/51         16/51
+  joins over 35 dE        10/51        6/51          5/51
+```
+
+Median worst join down 17 %, and the count of composites carrying a visible break down by
+more than a third. The maximum does not move: one composite holds a face whose tone matches
+nothing else in the corpus, which is a property of the material rather than of the
+assignment. A quadrant the second pass moves is recorded as `refined`, rather than leaving
+the first pass credited with a choice it did not make.
 
 **Frontality comes from head yaw when the detector reports a usable one.** Vision does not
 — it quantises to 45° steps — so a Vision run falls back to the quality score and the
@@ -174,7 +217,9 @@ not the piece.
 
 `mix-manifest.json` and `mix-report.csv` record which image went where, what each quadrant
 was matched on, what it scored, and what all four seams came out at — so a bad join is
-traced rather than guessed at.
+traced rather than guessed at. Each composite also carries `worstSeam`, which is the number
+to read when a join looks wrong: a seam can average well and still break at the chin, and
+the average is the statistic that hides exactly that.
 
 ### One thing tone matching cannot see
 
@@ -362,8 +407,42 @@ because silently forgetting a folder is how somebody loses a corpus they added m
 ago. Space previews the selected photograph. Before anything runs, the banner says how
 many were found, how many this run has already aligned, and how many are still to do.
 
+**A folder holding a mix is skipped whole**, previews and all. There is no reliable way to
+tell a composite from a photograph by looking at it — it is 2048 × 2048 and it has two eyes
+and a mouth within a few pixels of where a portrait's are, because that is precisely what it
+was built from. Found on a real corpus: a folder of 51 composites was added beside the
+portraits, Analyse took 306 candidates instead of 204, the gates caught 101 of them on
+coverage and magnification, and one got through — so a quartered portrait of four different
+people entered the corpus as a face. There *is* a completely reliable way to tell by looking
+beside them, which is `mix-manifest.json`, so the enumerator is told to skip the whole
+directory rather than filter it afterwards. A folder left out this way is named and its
+reason given rather than silently emptied: somebody who drags a mix folder in and reads
+"0 images found" has been told nothing at all.
+
 **Analyze** runs the same pipeline the CLI does, in process, and hands the result
-straight to Fine Tune. Two settings and no more — which detector, and where the tiles go.
+straight to Fine Tune. Where the tiles go, and the four settings that decide what a run
+*is*: the detector, the magnification gate, the stretch cap and the shear cap.
+
+**All four travel with the run.** Each is persisted between launches and adopted from the
+run being opened — and from a run already sitting in the output folder — rather than
+starting from a built-in default. This is worth stating because every one of them was at
+some point held in two places that could disagree, the manifest on disk and whatever the
+app defaulted to, and each disagreement destroyed work without raising an error. A run
+aligned at a 12 % stretch cap reopened showing 5 %, and one press of Analyse Again remade
+it. A run made with InsightFace reopened showing Vision, and one press rewrote 204 tiles
+with every yaw reported as 0° — the hardest of the four to notice, because nothing errors,
+every tile is written, the mouths still land on target, and the only symptom is a mix whose
+"most frontal faces on top" has quietly become a proxy for pose instead of a measurement of
+it.
+
+A detector name a build does not recognise leaves the choice as it stands rather than
+falling back to Vision. Falling back would be choosing a real detector with real
+consequences on the strength of not understanding the question.
+
+![The Fine Tune stage: a queue ordered worst first on the left, one face enlarged on the right with draggable markers on both eyes and the mouth, and a metrics strip along the bottom](docs/screenshots/fine-tune.jpg)
+
+*Fine Tune, with the queue ordered worst first and the metrics for the selected tile along
+the bottom. The banner counts corrections that have not been saved yet.*
 
 **Fine Tune** is the review queue: it reads `manifest.json` from the run, and a `qa.json`
 when it can find one, so the queue can be ordered by distance from the stack consensus.
@@ -385,10 +464,40 @@ would slide the feature out from under the cursor as it was being aimed at. The 
 *do* update live, from a provisional solve, so the mouth error can be watched falling
 before letting go.
 
+**The stretch and shear caps bound the drag, not just the run.** A drag asks for whatever
+stretch would bring that point onto its target; the cap is what it gets. Reported from Fine
+Tune as "dragging the mouth marker moves the marker and not the face" — which was not a
+broken drag but a cap refusing: one real tile wanted 35.3 % and the control could not be set
+past 20, so the request was clipped and the mouth stayed where it was. Fine Tune had been
+saying so all along, in the words *capped, wanted +35.3%*. The solver never had a limit —
+`maxStretch` is a plain `Double` and the command line has always accepted any value — so the
+ceiling was only ever on the slider, and it is 50 % now. Measured on 204 portraits with
+InsightFace landmarks:
+
+```
+  stretch cap    tiles clamped   worst mouth error
+      12%           11/204            73.2 px
+      25%            0/204            32.5 px
+      50%            0/204            32.5 px
+```
+
+25 % frees every tile and 50 buys nothing more, which is worth knowing before reaching for a
+bigger number than the work needs. The 32.5 px that survives an uncapped stretch is the
+second half of it, and every one of those pixels was horizontal: stretch owns the y axis,
+and shear is the only linear operation that can slide a mouth sideways with both eyes still
+pinned, so it owns the x. At 25 % stretch and 20 % shear the worst mouth error over all 204
+tiles is **0.0 px** — every mouth exactly on target. The median face is stretched the same
+either way (4.59 % at a 5 % cap against 4.92 % at 12 %), so the extra range is spent only
+where the mouth was missing; raising the cap does not distort the corpus, it distorts the
+few faces whose proportions were fighting the canvas.
+
 Saving re-renders only the edited tiles and updates the manifest in place, so a later
 `stack` or `qa` picks the corrections up with no further step. A correction that pushes a
 tile past a gate removes its file and clears its path, rather than leaving a stale tile
-for the next stack run to swallow.
+for the next stack run to swallow. The caps in force go into the manifest with them:
+leaving the run's original numbers would describe tiles that no longer exist, and would
+re-solve the correction against a budget it was never made with the next time the folder
+is opened.
 
 **Mix** composes the run's tiles into quartered portraits and shows what came out: a grid
 of flattened previews with each composite's four sources and its seam distances underneath,
@@ -453,11 +562,12 @@ See [docs/PLAN.md](docs/PLAN.md) for the reasoning, the decisions and what is ne
 swift test
 ```
 
-309 tests, about five minutes. Covers the transform algebra, the solver invariants (including a randomised sweep
-asserting the eyes never move), polygon clipping for coverage, a pixel-level check that
-landmarks land on their targets in the rendered output without mirroring or flipping,
-PackBits round-trips, and a structural reader that walks every declared section length
-in a written document and checks it lands where the content actually ends.
+364 tests in 49 suites, about six minutes. Covers the transform algebra, the solver
+invariants (including a randomised sweep asserting the eyes never move), polygon clipping
+for coverage, a pixel-level check that landmarks land on their targets in the rendered
+output without mirroring or flipping, PackBits round-trips, and a structural reader that
+walks every declared section length in a written document and checks it lands where the
+content actually ends.
 
 The mix is covered at both ends. The assignment is a pure function over measurements, so
 the invariants are checked over a whole batch rather than one composite: every tile placed
@@ -495,3 +605,37 @@ mode it walks every composite the manifest names: each quadrant layer's rectangl
 pixels against the matching quarter of the tile it came from, that the three markers are
 hidden, that the flattened composite is the four quadrants assembled, and that no
 photograph appears twice across the batch.
+
+## Releases
+
+**0.4.2** — the first tagged release. What it carries over the initial cut:
+
+- **Seams are matched along their length.** A strip is a sixteen-sample profile rather than
+  one mean, scored on offset and on slope, and a 2-opt pass refines the greedy plan
+  afterwards. Median worst join down 17 %, composites carrying a visible break down by more
+  than a third.
+- **Enough stretch and shear to actually place a mouth.** The caps are controls, they reach
+  Fine Tune's drag rather than only the batch, and they are recorded in the manifest on
+  save. At 25 % stretch and 20 % shear every mouth in a 204-portrait corpus lands exactly on
+  target.
+- **All four run settings travel with the run** — detector, magnification gate, stretch cap,
+  shear cap — persisted between launches and adopted from the run being opened, instead of
+  silently reverting to a built-in default and remaking work at the wrong numbers.
+- **A mix folder is output, and the scanner knows it.** Any directory holding a
+  `mix-manifest.json` is skipped whole, so a run cannot import its own composites as though
+  they were photographs.
+- **Mix is a stage in the app**, with the seed as a control and every composite's four
+  sources and seam distances shown underneath it.
+- Fixes for the launch that produced no window, twenty photographs reported missing while
+  sitting where they always were, and a save that could not say so.
+
+`docs/PLAN.md` carries the reasoning behind each of these, the measurements, and what is
+next.
+
+## License
+
+[MIT](LICENSE). Copyright © 2026 Charis Tsevis.
+
+The licence covers the source. It says nothing about the photographs you feed it — those
+are yours to clear, and portraits of identifiable people carry obligations that no software
+licence can grant you.
