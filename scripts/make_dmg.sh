@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build a disk image holding Prosopon Review.app.
+# Build a disk image holding Prosopon Review.app, signed and notarised.
 #
-#   scripts/make_dmg.sh [output.dmg]
+#   scripts/make_dmg.sh [output.dmg] [--ad-hoc] [--no-notarise]
 #
 # Writes dist/Prosopon-Review-<version>.dmg **inside the repository**, and the image is
 # committed with it. Not .build/ -- that is SwiftPM's scratch directory, it is ignored by
@@ -14,13 +14,17 @@
 # building one.
 #
 # The image is compressed, read-only, and carries an /Applications symlink so it can be
-# installed by dragging. It is **ad-hoc signed and not notarised**: on any Mac other than
-# this one, Gatekeeper will refuse it on a double-click, and it has to be opened once
-# from the context menu, or cleared with
+# installed by dragging.
 #
-#     xattr -dr com.apple.quarantine "/Applications/Prosopon Review.app"
+# Signing needs a Developer ID Application certificate in the login keychain, and
+# notarising needs credentials stored once with
 #
-# Notarising needs a Developer ID certificate, which this project does not have.
+#     xcrun notarytool store-credentials prosopon-notary \
+#         --apple-id <apple-id> --team-id TN899J6HRF
+#
+# Either missing, the script says so and falls back to the old ad-hoc image, which
+# Gatekeeper refuses on any other Mac. --ad-hoc forces that fallback; --no-notarise signs
+# properly but skips the round trip to Apple, which is what you want while iterating.
 
 set -euo pipefail
 
@@ -30,14 +34,96 @@ VERSION="$(grep -o 'CFBundleShortVersionString</key><string>[^<]*' "$REPO/script
            | head -1 | sed 's/.*<string>//')"
 VERSION="${VERSION:-0.4.2}"
 
-OUTPUT="${1:-$REPO/dist/Prosopon-Review-$VERSION.dmg}"
+TEAM_ID="${PROSOPON_TEAM_ID:-TN899J6HRF}"
+NOTARY_PROFILE="${PROSOPON_NOTARY_PROFILE:-prosopon-notary}"
+
 STAGING="$REPO/.build/dmg-staging"
+OUTPUT=""
+FORCE_AD_HOC=0
+NOTARISE=1
 
 usage() {
-    sed -n '3,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)                usage ;;
+        --ad-hoc|--adhoc)         FORCE_AD_HOC=1 ;;
+        --no-notarise|--no-notarize) NOTARISE=0 ;;
+        -*)                       echo "error: unknown option $arg" >&2; exit 1 ;;
+        *)                        OUTPUT="$arg" ;;
+    esac
+done
+OUTPUT="${OUTPUT:-$REPO/dist/Prosopon-Review-$VERSION.dmg}"
+
+# --- who is signing ---------------------------------------------------------
+#
+# Resolved once, up front, so the script can say what kind of image it is about to make
+# before spending two minutes making it.
+
+IDENTITY=""
+if (( ! FORCE_AD_HOC )); then
+    IDENTITY="${PROSOPON_SIGN_IDENTITY:-}"
+    if [[ -z "$IDENTITY" ]]; then
+        IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+                    | sed -n "s/.*\"\(Developer ID Application: .*($TEAM_ID)\)\".*/\1/p" \
+                    | head -1)"
+    fi
+    [[ -z "$IDENTITY" ]] && echo "note: no Developer ID Application certificate for team $TEAM_ID; falling back to ad-hoc" >&2
+fi
+
+if [[ -n "$IDENTITY" ]] && (( NOTARISE )); then
+    xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 || {
+        echo "note: no notarytool credentials under profile '$NOTARY_PROFILE'; signing without notarising" >&2
+        NOTARISE=0
+    }
+fi
+
+# --- signing ----------------------------------------------------------------
+#
+# --options runtime is what makes the signature notarisable: Apple rejects a submission
+# without the hardened runtime. There is no nested code in the bundle -- ONNX Runtime is
+# a static library, so `otool -L` shows nothing outside /usr/lib and /System -- which is
+# why one codesign call over the .app is the whole job and --deep is not needed. No
+# entitlements are claimed: the app is not sandboxed, it JITs nothing, and CoreML runs
+# under the hardened runtime unaided.
+
+sign() {
+    local target="$1"
+    if [[ -n "$IDENTITY" ]]; then
+        codesign --force --options runtime --timestamp --sign "$IDENTITY" "$target"
+        codesign --verify --strict "$target" \
+            || { echo "error: the Developer ID signature on $(basename "$target") did not verify" >&2; exit 1; }
+    else
+        # An ad-hoc signature buys no Gatekeeper trust. What it does buy is a bundle
+        # macOS treats as intact rather than as damaged code with no signature at all,
+        # which is worth the one line.
+        codesign --force --sign - --timestamp=none "$target" 2>/dev/null \
+            || echo "warning: could not ad-hoc sign $(basename "$target"); the image is still usable" >&2
+        codesign --verify --strict "$target" 2>/dev/null \
+            || echo "warning: the ad-hoc signature did not verify" >&2
+    fi
+}
+
+# Both the app and the image get their own ticket. Stapling only the image would leave
+# the copy dragged to /Applications relying on an online check at first launch, which is
+# the one moment a new user is least forgiving of a spinner and a refusal.
+notarise() {                       # notarise <what-to-upload> <what-to-staple>
+    local upload="$1" target="$2" out id
+    echo "  submitting $(basename "$target") to Apple…"
+    out="$(xcrun notarytool submit "$upload" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1)" || true
+    id="$(printf '%s\n' "$out" | sed -n 's/^ *id: \([0-9a-f-]\{36\}\)$/\1/p' | head -1)"
+    if ! printf '%s\n' "$out" | grep -q "status: Accepted"; then
+        printf '%s\n' "$out" | sed 's/^/    /' >&2
+        echo "error: notarisation did not succeed" >&2
+        [[ -n "$id" ]] && echo "  xcrun notarytool log $id --keychain-profile $NOTARY_PROFILE" >&2
+        exit 1
+    fi
+    xcrun stapler staple "$target" >/dev/null \
+        || { echo "error: could not staple the ticket to $(basename "$target")" >&2; exit 1; }
+}
 
 # --- the app ----------------------------------------------------------------
 
@@ -48,13 +134,18 @@ mkdir -p "$STAGING"
 # be compressed into an image.
 "$REPO/scripts/make_app.sh" "$STAGING/$NAME.app"
 
-# An ad-hoc signature is not a Developer ID one and buys no Gatekeeper trust. What it
-# does buy is a bundle macOS treats as intact rather than as damaged code with no
-# signature at all, which is worth the one line.
-codesign --force --sign - --timestamp=none "$STAGING/$NAME.app" 2>/dev/null \
-    || echo "warning: could not ad-hoc sign the bundle; the image is still usable" >&2
-codesign --verify --deep --strict "$STAGING/$NAME.app" 2>/dev/null \
-    || echo "warning: the ad-hoc signature did not verify" >&2
+sign "$STAGING/$NAME.app"
+
+if [[ -n "$IDENTITY" ]] && (( NOTARISE )); then
+    # notarytool will not take a bare .app, and ditto's zip is the archive format Apple
+    # documents for this. It exists only to carry the bundle there; the ticket is
+    # stapled to the .app itself.
+    ZIP="$REPO/.build/$NAME.zip"
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$STAGING/$NAME.app" "$ZIP"
+    notarise "$ZIP" "$STAGING/$NAME.app"
+    rm -f "$ZIP"
+fi
 
 ln -s /Applications "$STAGING/Applications"
 
@@ -73,6 +164,12 @@ hdiutil create \
     "$OUTPUT"
 
 rm -rf "$STAGING"
+
+sign "$OUTPUT"
+
+if [[ -n "$IDENTITY" ]] && (( NOTARISE )); then
+    notarise "$OUTPUT" "$OUTPUT"
+fi
 
 # --- say what came out ------------------------------------------------------
 #
@@ -97,12 +194,34 @@ do
     [[ -e "$MOUNT/$required" ]] || { echo "error: the image is missing $required" >&2; exit 1; }
 done
 
+# The question a user's Mac will ask, asked here first. On a notarised build this prints
+# "accepted" with source=Notarized Developer ID; a signed-but-unnotarised one is rejected
+# by design, so it is only worth asking when a ticket should exist.
+GATEKEEPER=""
+if [[ -n "$IDENTITY" ]] && (( NOTARISE )); then
+    GATEKEEPER="$(spctl --assess --type exec -vv "$MOUNT/$NAME.app" 2>&1 | sed -n 's/^source=/source /p' | head -1)"
+    spctl --assess --type exec "$MOUNT/$NAME.app" >/dev/null 2>&1 \
+        || { echo "error: Gatekeeper rejects the app on the finished image" >&2; exit 1; }
+fi
+
 SIZE="$(du -h "$OUTPUT" | cut -f1 | tr -d ' ')"
 echo
 echo "  $(basename "$OUTPUT")  $SIZE, version $VERSION"
 echo "  every file checked on the mounted image"
-echo "  ${OUTPUT#"$REPO/"}  (in the repository — commit it)"
+case "$OUTPUT" in
+    "$REPO/"*) echo "  ${OUTPUT#"$REPO/"}  (in the repository — commit it)" ;;
+    *)         echo "  $OUTPUT" ;;
+esac
 echo
-echo "  Unsigned beyond ad-hoc: on another Mac, open it once from the context menu, or"
-echo "  run  xattr -dr com.apple.quarantine \"/Applications/$NAME.app\""
+if [[ -n "$IDENTITY" ]] && (( NOTARISE )); then
+    echo "  Signed as $IDENTITY"
+    echo "  Notarised and stapled, app and image both${GATEKEEPER:+ — Gatekeeper: $GATEKEEPER}"
+    echo "  It will open on another Mac with a double-click."
+elif [[ -n "$IDENTITY" ]]; then
+    echo "  Signed as $IDENTITY, not notarised."
+    echo "  Gatekeeper still refuses it elsewhere; run without --no-notarise for a release."
+else
+    echo "  Unsigned beyond ad-hoc: on another Mac, open it once from the context menu, or"
+    echo "  run  xattr -dr com.apple.quarantine \"/Applications/$NAME.app\""
+fi
 echo

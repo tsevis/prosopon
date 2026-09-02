@@ -37,9 +37,23 @@ so the app in the image is the app that gets tested rather than a second attempt
 building one. The image is verified by mounting it and checking every file before the
 script reports success.
 
-It is **ad-hoc signed and not notarised** — there is no Developer ID certificate here. On
-any other Mac, Gatekeeper will refuse a double-click; open it once from the context menu,
-or run `xattr -dr com.apple.quarantine "/Applications/Prosopon Review.app"`.
+The app and the image are both **signed with a Developer ID certificate, notarised, and
+stapled**, so the image opens on any Mac with a double-click and no quarantine dance. Both
+carry their own ticket: stapling only the image would leave the copy dragged to
+`/Applications` depending on an online check at first launch.
+
+That needs two things on the building Mac — a *Developer ID Application* certificate in the
+login keychain, and notarisation credentials stored once:
+
+```bash
+xcrun notarytool store-credentials prosopon-notary --apple-id <apple-id> --team-id TN899J6HRF
+```
+
+Either one missing, the script says so and falls back to an ad-hoc image, which Gatekeeper
+refuses elsewhere; it has to be opened once from the context menu, or cleared with `xattr
+-dr com.apple.quarantine "/Applications/Prosopon Review.app"`. `--ad-hoc` forces that
+fallback, and `--no-notarise` signs properly but skips the round trip to Apple, which is
+what you want while iterating.
 
 ## Use
 
