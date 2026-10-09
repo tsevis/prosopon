@@ -74,7 +74,7 @@ if (( ! FORCE_AD_HOC )); then
     IDENTITY="${PROSOPON_SIGN_IDENTITY:-}"
     if [[ -z "$IDENTITY" ]]; then
         [[ -n "$TEAM_ID" ]] || {
-            echo "error: set APPLE_TEAM_ID (or PROSOPON_SIGN_IDENTITY) to sign, or pass --ad-hoc" >&2
+            echo "error: set PROSOPON_TEAM_ID or APPLE_TEAM_ID (or PROSOPON_SIGN_IDENTITY) to sign, or pass --ad-hoc" >&2
             exit 1
         }
         IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
