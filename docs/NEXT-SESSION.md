@@ -1,13 +1,13 @@
 # Next session — Mix
 
 Paste the block below into a fresh Claude Code session started in
-`~/AI/ClaudeCode/prosopon`.
+the root of your checkout of `github.com/tsevis/prosopon`.
 
 ---
 
 ## The prompt
 
-Work in `~/AI/ClaudeCode/prosopon` (private repo, `github.com/tsevis/prosopon`, branch
+Work in your checkout of `github.com/tsevis/prosopon` (public repo, branch
 `master`, all pushed and clean). Read `README.md` and `docs/PLAN.md` first — the plan
 carries the reasoning behind the fixed geometry, a record of what has been measured, and
 several places where an earlier assumption turned out to be wrong.

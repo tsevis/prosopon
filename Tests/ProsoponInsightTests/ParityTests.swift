@@ -20,10 +20,16 @@ struct Truth: Decodable {
 
 @Suite("InsightFace parity")
 struct ParityTests {
-    static let fixtures = URL(fileURLWithPath: "/private/tmp/claude-501/-Users-tsevis-AI-ClaudeCode/acf95f85-4c9b-4d65-9e0c-723cbe28353b/scratchpad")
+    /// Directory holding `t1.jpg`, `insightface_truth.json` and `pose_truth.json` (read by
+    /// `PoseTests`), named by the environment variable `PROSOPON_PARITY_FIXTURES`. With it
+    /// unset or empty the tests that read these files, here and in `PoseTests`, are skipped.
+    static let fixtureDirectory = ProcessInfo.processInfo.environment["PROSOPON_PARITY_FIXTURES"]
+        .flatMap { $0.isEmpty ? nil : $0 }
+    static let fixtures = URL(fileURLWithPath: fixtureDirectory ?? "", isDirectory: true)
 
     static var available: Bool {
-        FileManager.default.fileExists(atPath: fixtures.appendingPathComponent("t1.jpg").path)
+        fixtureDirectory != nil
+            && FileManager.default.fileExists(atPath: fixtures.appendingPathComponent("t1.jpg").path)
             && ((try? ModelBundle.locate()) != nil)
     }
 
