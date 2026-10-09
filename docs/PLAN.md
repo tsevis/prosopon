@@ -163,7 +163,7 @@ centroid is not. Default to commissures, offer the seam centroid as an option.
 | **Default** | Apple **Vision** `DetectFaceLandmarksRequest` | 76 points incl. pupils and outer/inner lips, plus roll/yaw/pitch. Zero model files, runs on the ANE, no dependency at all. |
 | **Accuracy** | InsightFace **`2d106det`** + **`det_10g`** (SCRFD) — `~/.insightface/models/buffalo_l/` | 106 dense points, materially better and steadier than Vision. |
 | **Pose / QA** | InsightFace **`1k3d68`** — same folder | 3D 68-point, yields reliable yaw/pitch/roll for gating. |
-| *Lightweight option* | **YuNet** `face_detection_yunet_2023mar.onnx` (227 KB, MIT) — `mozaix/plugins/cv/models/` | Emits exactly the 5 points needed: both eyes, nose, both mouth corners. Ideal cheap first pass or sanity cross-check. |
+| *Lightweight option* | **YuNet** `face_detection_yunet_2023mar.onnx` (227 KB, MIT) — from the OpenCV Zoo | Emits exactly the 5 points needed: both eyes, nose, both mouth corners. Ideal cheap first pass or sanity cross-check. |
 
 **Integration note:** `coremltools` 8.3 is installed, but its ONNX converter was
 removed back in v6 — you can't convert these ONNX files to Core ML directly. The
@@ -665,7 +665,7 @@ a full-size one when the layers are never going to be touched.
 
 ### Measured on twenty portraits
 
-`/Users/tsevis/01CLIENTI/a client project/LAB 3/The PEOPLE for Prosopon`, 20 photographs, five
+A folder from a client project, 20 photographs, five
 subjects at four frames each. All 20 cleared the gates at `--max-magnification 8` (median
 magnification 2.47), giving exactly five composites and no remainder. The whole mix — 20
 tiles measured, five documents and five previews written — took **1.0 s** and 120 MB.

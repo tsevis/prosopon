@@ -128,8 +128,8 @@ The composing itself belongs in a target the CLI can reach too, alongside
 - **Do not launch the app to verify a change unless asked.** If you kill and relaunch while
   debugging, wait for the process to actually be gone; `pkill; sleep 1` is not enough, and
   `open` on a survivor sends a reopen event that makes a broken cold launch look fine.
-- Use the 16-image set at `~/prosopon-test16`, not the 2,560-image corpus at
-  `/Users/tsevis/01CLIENTI/a client project/LAB 3/The PEOPLE/ALL PEOPLE`. The full run is 25 GB and
+- Use the 16-image set at `~/prosopon-test16`, not the 2,560-image corpus from a client
+  project (`<client-folder>`). The full run is 25 GB and
   the volume has been near full. Note that test16's sources need `--max-magnification 8`
   to clear the gates.
 - Two lessons from this project's own bugs, both still live: **test fixtures should come
