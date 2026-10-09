@@ -46,8 +46,10 @@ public enum AboutText {
         "Face detection uses Apple's Vision framework, or the InsightFace buffalo_l models "
             + "(det_10g, 2d106det and 1k3d68) run through ONNX Runtime with the CoreML "
             + "execution provider. The InsightFace models are the work of Jia Guo and "
-            + "Jiankang Deng and are licensed for non-commercial research use; Prosopon "
-            + "ships none of them and reads whichever copy is already installed.",
+            + "Jiankang Deng. InsightFace states that its pretrained models are for "
+            + "non-commercial research purposes only and gives a contact for licensing; "
+            + "read its terms before commercial use. Prosopon ships none of them and reads "
+            + "whichever copy is already installed.",
 
         "ONNX Runtime is Copyright (c) Microsoft Corporation, MIT licence. "
             + "swift-argument-parser is Copyright (c) Apple Inc., Apache 2.0.",
