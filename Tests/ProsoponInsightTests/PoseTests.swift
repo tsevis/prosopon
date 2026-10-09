@@ -17,9 +17,10 @@ struct PoseTruth: Decodable {
 struct PoseTests {
 
     static var available: Bool {
-        FileManager.default.fileExists(
-            atPath: ParityTests.fixtures.appendingPathComponent("pose_truth.json").path
-        ) && ((try? ModelBundle.locate())?.pose != nil)
+        ParityTests.fixtureDirectory != nil
+            && FileManager.default.fileExists(
+                atPath: ParityTests.fixtures.appendingPathComponent("pose_truth.json").path
+            ) && ((try? ModelBundle.locate())?.pose != nil)
     }
 
     @Test("yaw agrees with the reference implementation", .enabled(if: available))

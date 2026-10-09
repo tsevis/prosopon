@@ -22,12 +22,15 @@
 #     xcrun notarytool store-credentials prosopon-notary \
 #         --apple-id <apple-id> --team-id <TEAM_ID>
 #
-# The certificate is found by Apple team ID, read from APPLE_TEAM_ID (or PROSOPON_TEAM_ID);
+# The certificate is found by Apple team ID, read from PROSOPON_TEAM_ID (or APPLE_TEAM_ID);
 # set PROSOPON_SIGN_IDENTITY to name the certificate directly instead.
 #
-# Either missing, the script says so and falls back to the old ad-hoc image, which
-# Gatekeeper refuses on any other Mac. --ad-hoc forces that fallback; --no-notarise signs
-# properly but skips the round trip to Apple, which is what you want while iterating.
+# With neither a team ID (PROSOPON_TEAM_ID or APPLE_TEAM_ID) nor PROSOPON_SIGN_IDENTITY
+# set, the script exits with an error unless --ad-hoc is passed. With a team ID but no
+# matching certificate it says so and falls back to an ad-hoc image; with no notarytool
+# credentials it signs but skips notarising. An ad-hoc image is refused by Gatekeeper on
+# any other Mac. --ad-hoc forces that image; --no-notarise signs properly but skips the
+# round trip to Apple, which is what you want while iterating.
 
 set -euo pipefail
 
@@ -46,7 +49,7 @@ FORCE_AD_HOC=0
 NOTARISE=1
 
 usage() {
-    sed -n '3,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 

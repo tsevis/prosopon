@@ -4,8 +4,9 @@ import Foundation
 ///
 /// Pose is read by fitting this canonical shape to the 68 points the model predicts and
 /// looking at the rotation that fit implies. The table is `meanshape_68.pkl` from
-/// InsightFace (MIT), transcribed so nothing has to be unpacked at run time; the values
-/// are arbitrary units, and only the rotation extracted from the fit is used.
+/// InsightFace, transcribed so nothing has to be unpacked at run time; its licence is not
+/// confirmed (see "Model licences" in the README). The values are arbitrary units, and
+/// only the rotation extracted from the fit is used.
 enum MeanShape68 {
     static let pointCount = 68
 

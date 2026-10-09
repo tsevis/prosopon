@@ -49,13 +49,18 @@ login keychain, and notarisation credentials stored once:
 xcrun notarytool store-credentials prosopon-notary --apple-id <apple-id> --team-id <TEAM_ID>
 ```
 
-The script finds the certificate by team ID, read from the `APPLE_TEAM_ID` environment
-variable (or name the certificate directly with `PROSOPON_SIGN_IDENTITY`).
+The script finds the certificate by team ID, read from the `PROSOPON_TEAM_ID` or
+`APPLE_TEAM_ID` environment variable (`PROSOPON_TEAM_ID` wins when both are set), or name
+the certificate directly with `PROSOPON_SIGN_IDENTITY`.
 
-Either one missing, the script says so and falls back to an ad-hoc image, which Gatekeeper
-refuses elsewhere; it has to be opened once from the context menu, or cleared with `xattr
--dr com.apple.quarantine "/Applications/Prosopon Review.app"`. `--ad-hoc` forces that
-fallback, and `--no-notarise` signs properly but skips the round trip to Apple, which is
+With no signing identity configured (none of `PROSOPON_TEAM_ID`, `APPLE_TEAM_ID` and
+`PROSOPON_SIGN_IDENTITY` is set) the script exits with an error unless `--ad-hoc` is
+passed. If a team ID is set but no matching certificate is found in the keychains, the
+script says so and falls back to an ad-hoc image; if the notarisation credentials are
+missing, it signs but skips notarising. An ad-hoc image is refused by Gatekeeper
+elsewhere; it has to be opened once from the context menu, or cleared with
+`xattr -dr com.apple.quarantine "/Applications/Prosopon Review.app"`. `--ad-hoc` forces
+that image, and `--no-notarise` signs properly but skips the round trip to Apple, which is
 what you want while iterating.
 
 ## Use
@@ -650,6 +655,66 @@ photograph appears twice across the batch.
 
 `docs/PLAN.md` carries the reasoning behind each of these, the measurements, and what is
 next.
+
+## Model licences
+
+The models below are separate works under their own terms. This section quotes what each
+source states; it is not legal advice. Read the full text before commercial use, or ask
+the authors. InsightFace and OpenCV Zoo links point at the commits read on 2026-10-09.
+
+| Model | What Prosopon uses it for | Licence, as the source states it | Source |
+| --- | --- | --- | --- |
+| Apple Vision face landmarks (`VNDetectFaceLandmarksRequest`) | Default detector: `--detector vision`, Vision in the app's detector picker (`Sources/ProsoponVision/VisionLandmarkDetector.swift`) | System framework of macOS; no licence text read | [API page][ml-apple] |
+| InsightFace `buffalo_l`: `det_10g.onnx` | Face detection (SCRFD) for `--detector insightface` and InsightFace in the app's picker (`Sources/ProsoponInsight/SCRFD.swift`) | "available for non-commercial research purposes only"; InsightFace's server code records a default licence for `buffalo_l` with `"grant": "non-commercial"` | [README][ml-if-readme], [model zoo][ml-if-zoo], [python-package][ml-if-pkg], [server default licence][ml-if-buffalo] |
+| InsightFace `buffalo_l`: `2d106det.onnx` | 106 landmarks, read for the eye corners and mouth corners (`Sources/ProsoponInsight/Landmark106.swift`) | As `det_10g.onnx` | As `det_10g.onnx` |
+| InsightFace `buffalo_l`: `1k3d68.onnx` | Head pose, loaded when the file is present: yaw feeds `--max-yaw`, the quality score and Mix; pitch is only recorded in the manifest; its roll is not used (`Sources/ProsoponInsight/Landmark3D68.swift`) | As `det_10g.onnx` | As `det_10g.onnx` |
+| InsightFace `meanshape_68.pkl` (a data table) | Transcribed as numbers into `Sources/ProsoponInsight/MeanShape68.swift` for the pose fit | Not confirmed, see the notes | [upstream file][ml-if-mean] |
+| InsightFace `buffalo_l`: `w600k_r50.onnx` | Not used by any code; named in this README and `docs/PLAN.md` as an idea not built | As `det_10g.onnx` | As `det_10g.onnx` |
+| YuNet (`face_detection_yunet_2023mar.onnx`) | Not used by any code; named in `docs/PLAN.md` and a comment in `Sources/ProsoponCore/Geometry/Point2D.swift` | Unclear, see the notes | [OpenCV Zoo README][ml-oz-readme] |
+
+- **Nothing is bundled or downloaded by Prosopon.** The repository holds no model weights,
+  and the app and the command-line tool contain no download code. The default detector
+  needs no model file. The InsightFace files are looked up in
+  `~/.insightface/models/buffalo_l`, `~/.insightface/models/models/buffalo_l` and
+  `PROSOPON_EXTRA_MODEL_DIRS`, or in the directory given with `--model-path`.
+- **One script downloads.** `scripts/insightface_truth.py` calls the Python `insightface`
+  package as `FaceAnalysis(name="buffalo_l", ...)`. In the upstream code at the commit above
+  ([face_analysis.py][ml-if-face], [storage.py][ml-if-storage]), that downloads the whole
+  `buffalo_l.zip` from the InsightFace `model-zoo` release when neither `./buffalo_l` nor
+  `~/.insightface/models/buffalo_l` exists. An installed release of the package can
+  behave differently.
+- **InsightFace.** The upstream README says the code is MIT, and that "the training data
+  containing the annotation (and the models trained with these data) are available for
+  non-commercial research purposes only", for models downloaded by hand or by the Python
+  library. Its 2025-11-24 update (item 2) says: "For open-sourced face recognition models
+  (e.g., buffalo_l package), please contact recognition-oss-pack@insightface.ai for
+  licensing."
+- **`meanshape_68`.** The file sits in upstream's `python-package` tree. That package's
+  README gives MIT for the library code and non-commercial research for the pretrained
+  models; which of the two covers this table is not confirmed here.
+- **YuNet.** The OpenCV Zoo README says all files in the YuNet directory are under the
+  [MIT License][ml-oz-licence], and names `yunet.onnx` in libfacedetection.train at commit
+  `a61a428929` as the model source. That commit's [LICENSE][ml-lft-old] is MIT, with
+  copyright lines for Max deGroot, Ellis Brown, Zisian Wong and Shifeng Zhang; the
+  [current LICENSE][ml-lft-head] of libfacedetection.train is BSD 3-Clause. Which text
+  governs the weights is unclear.
+- **Detector choice.** `--max-yaw` gating, and Mix ordering by yaw, need the head pose
+  that only the InsightFace backend reports usefully (see [Head pose](#head-pose)). With
+  the default Vision detector, `--max-yaw` prints a warning and Mix does not sort by yaw;
+  nothing else needs a model file.
+
+[ml-apple]: https://developer.apple.com/documentation/vision/vndetectfacelandmarksrequest
+[ml-if-readme]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/README.md#license
+[ml-if-zoo]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/model_zoo/README.md
+[ml-if-pkg]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/python-package/README.md#license
+[ml-if-buffalo]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/server/backend/insightface_server/licensing/defaults/buffalo_l/MODEL.LICENSE
+[ml-if-mean]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/python-package/insightface/data/objects/meanshape_68.pkl
+[ml-if-face]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/python-package/insightface/app/face_analysis.py
+[ml-if-storage]: https://github.com/deepinsight/insightface/blob/81929474ec02e54e3655f6841bced800009c592d/python-package/insightface/utils/storage.py
+[ml-oz-readme]: https://github.com/opencv/opencv_zoo/blob/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/README.md
+[ml-oz-licence]: https://github.com/opencv/opencv_zoo/blob/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/LICENSE
+[ml-lft-old]: https://github.com/ShiqiYu/libfacedetection.train/blob/a61a428929148171b488f024b5d6774f93cdbc13/LICENSE
+[ml-lft-head]: https://github.com/ShiqiYu/libfacedetection.train/blob/dca340aa082c71081a68d17db8e58b33a58a914b/LICENSE
 
 ## License
 

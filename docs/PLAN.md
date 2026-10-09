@@ -163,7 +163,7 @@ centroid is not. Default to commissures, offer the seam centroid as an option.
 | **Default** | Apple **Vision** `DetectFaceLandmarksRequest` | 76 points incl. pupils and outer/inner lips, plus roll/yaw/pitch. Zero model files, runs on the ANE, no dependency at all. |
 | **Accuracy** | InsightFace **`2d106det`** + **`det_10g`** (SCRFD) — `~/.insightface/models/buffalo_l/` | 106 dense points, materially better and steadier than Vision. |
 | **Pose / QA** | InsightFace **`1k3d68`** — same folder | 3D 68-point, yields reliable yaw/pitch/roll for gating. |
-| *Lightweight option* | **YuNet** `face_detection_yunet_2023mar.onnx` (227 KB, MIT) — from the OpenCV Zoo | Emits exactly the 5 points needed: both eyes, nose, both mouth corners. Ideal cheap first pass or sanity cross-check. |
+| *Lightweight option* | **YuNet** `face_detection_yunet_2023mar.onnx` (227 KB; licence unclear, see "Model licences" in the README) — from the OpenCV Zoo | Emits exactly the 5 points needed: both eyes, nose, both mouth corners. Ideal cheap first pass or sanity cross-check. |
 
 **Integration note:** `coremltools` 8.3 is installed, but its ONNX converter was
 removed back in v6 — you can't convert these ONNX files to Core ML directly. The
