@@ -1,6 +1,7 @@
 .build/
-# dist/ is deliberately NOT ignored: the disk image is built in the repository and
-# committed with it, so a release is findable without rebuilding one.
+# Disk images are built into dist/ but not committed: signed builds are attached to
+# GitHub Releases.
+dist/*.dmg
 .swiftpm/
 .DS_Store
 out/

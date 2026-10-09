@@ -28,9 +28,9 @@ A double-clickable disk image of the review app:
 ./scripts/make_dmg.sh              # dist/Prosopon-Review-0.4.2.dmg
 ```
 
-**The image is built in the repository, under `dist/`, and committed with it** — not in
-`.build/`, which git ignores and `swift package clean` deletes. A release should still be
-there tomorrow without anyone rebuilding it.
+**The image is built in the repository, under `dist/`** — not in `.build/`, which
+`swift package clean` deletes. It is git-ignored: signed builds are attached to
+[GitHub Releases](https://github.com/tsevis/prosopon/releases) rather than committed.
 
 The bundle inside is assembled by `scripts/make_app.sh`, the same code `review.sh` uses,
 so the app in the image is the app that gets tested rather than a second attempt at
@@ -46,8 +46,11 @@ That needs two things on the building Mac — a *Developer ID Application* certi
 login keychain, and notarisation credentials stored once:
 
 ```bash
-xcrun notarytool store-credentials prosopon-notary --apple-id <apple-id> --team-id TN899J6HRF
+xcrun notarytool store-credentials prosopon-notary --apple-id <apple-id> --team-id <TEAM_ID>
 ```
+
+The script finds the certificate by team ID, read from the `APPLE_TEAM_ID` environment
+variable (or name the certificate directly with `PROSOPON_SIGN_IDENTITY`).
 
 Either one missing, the script says so and falls back to an ad-hoc image, which Gatekeeper
 refuses elsewhere; it has to be opened once from the context menu, or cleared with `xattr
@@ -308,7 +311,9 @@ off 512 and 1536.
 **InsightFace** (`--detector insightface`) runs `det_10g` + `2d106det` from `buffalo_l`
 through ONNX Runtime with the CoreML execution provider — no Python at runtime. It is
 searched for in `~/.insightface/models/buffalo_l` and a couple of other usual places, or
-pointed at with `--model-path`. Its 106-point contour gives the canthi and the mouth
+pointed at with `--model-path`. Further directories to search can be listed, separated by
+`:`, in the `PROSOPON_EXTRA_MODEL_DIRS` environment variable; each must directly hold
+`det_10g.onnx` and `2d106det.onnx`. Its 106-point contour gives the canthi and the mouth
 commissures directly, rather than leaving them to be inferred from a coarser
 constellation.
 

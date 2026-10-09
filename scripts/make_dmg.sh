@@ -4,10 +4,10 @@
 #
 #   scripts/make_dmg.sh [output.dmg] [--ad-hoc] [--no-notarise]
 #
-# Writes dist/Prosopon-Review-<version>.dmg **inside the repository**, and the image is
-# committed with it. Not .build/ -- that is SwiftPM's scratch directory, it is ignored by
-# git, and `swift package clean` deletes it, so a release built there exists only until
-# the next tidy-up.
+# Writes dist/Prosopon-Review-<version>.dmg **inside the repository**, where git ignores
+# it (dist/*.dmg): attach the signed image to a GitHub Release rather than committing it.
+# Not .build/ -- that is SwiftPM's scratch directory, and `swift package clean` deletes
+# it, so an image built there exists only until the next tidy-up.
 #
 # The bundle inside is assembled by scripts/make_app.sh, the same code review.sh uses, so
 # the app in the image is the app that gets tested rather than a second attempt at
@@ -20,7 +20,10 @@
 # notarising needs credentials stored once with
 #
 #     xcrun notarytool store-credentials prosopon-notary \
-#         --apple-id <apple-id> --team-id TN899J6HRF
+#         --apple-id <apple-id> --team-id <TEAM_ID>
+#
+# The certificate is found by Apple team ID, read from APPLE_TEAM_ID (or PROSOPON_TEAM_ID);
+# set PROSOPON_SIGN_IDENTITY to name the certificate directly instead.
 #
 # Either missing, the script says so and falls back to the old ad-hoc image, which
 # Gatekeeper refuses on any other Mac. --ad-hoc forces that fallback; --no-notarise signs
@@ -34,7 +37,7 @@ VERSION="$(grep -o 'CFBundleShortVersionString</key><string>[^<]*' "$REPO/script
            | head -1 | sed 's/.*<string>//')"
 VERSION="${VERSION:-0.4.2}"
 
-TEAM_ID="${PROSOPON_TEAM_ID:-TN899J6HRF}"
+TEAM_ID="${PROSOPON_TEAM_ID:-${APPLE_TEAM_ID:-}}"
 NOTARY_PROFILE="${PROSOPON_NOTARY_PROFILE:-prosopon-notary}"
 
 STAGING="$REPO/.build/dmg-staging"
@@ -43,7 +46,7 @@ FORCE_AD_HOC=0
 NOTARISE=1
 
 usage() {
-    sed -n '3,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -67,6 +70,10 @@ IDENTITY=""
 if (( ! FORCE_AD_HOC )); then
     IDENTITY="${PROSOPON_SIGN_IDENTITY:-}"
     if [[ -z "$IDENTITY" ]]; then
+        [[ -n "$TEAM_ID" ]] || {
+            echo "error: set APPLE_TEAM_ID (or PROSOPON_SIGN_IDENTITY) to sign, or pass --ad-hoc" >&2
+            exit 1
+        }
         IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
                     | sed -n "s/.*\"\(Developer ID Application: .*($TEAM_ID)\)\".*/\1/p" \
                     | head -1)"
@@ -209,7 +216,7 @@ echo
 echo "  $(basename "$OUTPUT")  $SIZE, version $VERSION"
 echo "  every file checked on the mounted image"
 case "$OUTPUT" in
-    "$REPO/"*) echo "  ${OUTPUT#"$REPO/"}  (in the repository — commit it)" ;;
+    "$REPO/"*) echo "  ${OUTPUT#"$REPO/"}  (git-ignored — attach it to a GitHub Release)" ;;
     *)         echo "  $OUTPUT" ;;
 esac
 echo
