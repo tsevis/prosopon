@@ -72,11 +72,18 @@ cp -f "$REPO/Resources/Prosopon.icns" "$APP/Contents/Resources/Prosopon.icns"
 for required in \
     "Contents/Info.plist" \
     "Contents/MacOS/prosopon-review" \
-    "Contents/Resources/Prosopon.icns" \
-    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AboutBanner.jpg" \
-    "Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AppMark.png"
+    "Contents/Resources/Prosopon.icns"
 do
     [[ -e "$APP/$required" ]] || { echo "error: the bundle is missing $required" >&2; exit 1; }
+done
+
+# SwiftPM writes the resource bundle flat (Resources/...) with older toolchains and as a
+# macOS bundle (Contents/Resources/Resources/...) with Swift 6.4; Bundle.module finds
+# either, so either passes.
+BUNDLED="$APP/Contents/Resources/Prosopon_ProsoponReview.bundle"
+for artwork in AboutBanner.jpg AppMark.png; do
+    [[ -e "$BUNDLED/Resources/$artwork" || -e "$BUNDLED/Contents/Resources/Resources/$artwork" ]] \
+        || { echo "error: the bundle is missing $artwork in Prosopon_ProsoponReview.bundle" >&2; exit 1; }
 done
 
 if [[ "$REGISTER" == "--register" ]]; then

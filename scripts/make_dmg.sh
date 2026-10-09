@@ -197,11 +197,16 @@ for required in \
     "$NAME.app/Contents/Info.plist" \
     "$NAME.app/Contents/MacOS/prosopon-review" \
     "$NAME.app/Contents/Resources/Prosopon.icns" \
-    "$NAME.app/Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AboutBanner.jpg" \
-    "$NAME.app/Contents/Resources/Prosopon_ProsoponReview.bundle/Resources/AppMark.png" \
     "Applications"
 do
     [[ -e "$MOUNT/$required" ]] || { echo "error: the image is missing $required" >&2; exit 1; }
+done
+
+# Flat or macOS-bundle layout, as in make_app.sh.
+BUNDLED="$MOUNT/$NAME.app/Contents/Resources/Prosopon_ProsoponReview.bundle"
+for artwork in AboutBanner.jpg AppMark.png; do
+    [[ -e "$BUNDLED/Resources/$artwork" || -e "$BUNDLED/Contents/Resources/Resources/$artwork" ]] \
+        || { echo "error: the image is missing $artwork in Prosopon_ProsoponReview.bundle" >&2; exit 1; }
 done
 
 # The question a user's Mac will ask, asked here first. On a notarised build this prints
